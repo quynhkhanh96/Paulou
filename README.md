@@ -1,6 +1,6 @@
 # Paulou
 
-![Paulou hero image](docs/assets/hero.jpg)
+![Paulou hero image](docs/assets/hero.png)
 
 A French pronunciation practice app: users input any sentence they want to practice — not just pre-scripted content — and the app breaks it down into rhythmic chunks, then into word- and phoneme-level units, with liaison-aware guidance and speech assessment feedback at each level.
 
@@ -74,37 +74,57 @@ The core pipeline (`core/`, `stages/`, `pipeline.py`) is plain Python with no de
 
 ## Current status
 
-**This project is at the design stage — nothing is implemented or tested yet.** The pipeline architecture, data model, and module boundaries described above are decided; the code itself has not been written. This README (and the repo structure) reflects the intended design, not current functionality.
+**Build order steps 1–2 (Roadmap) are implemented and tested.** Steps 3+ (sentence parser, TTS, GOP scorer, free-phone recognizer) are still at the design stage — decided in the Architecture Spec, not yet built.
 
-**Planned first implementation steps:**
-- Core data models (`Sentence`, `Chunk`, `PronunciationUnit`, `Attempt`)
-- Liaison rule engine — pure, deterministic, and the easiest module to unit test first
-- G2P pipeline (Lexique383 + eSpeak-ng fallback)
+**Implemented so far:**
+- **Pure functions** (step 1): liaison rule engine (`stages/liaison/rule_engine.py`), unit assembly (`stages/assembly/unit_assembler.py`), calibration (`stages/speech_assessment/calibration.py`), feedback templating (`stages/speech_assessment/feedback.py` — scoped to `single` units for MVP, see Decision Log D19).
+- **G2P + POS tagging** (step 2): `stages/g2p/lexique_espeak.py` (Lexique383 lookup + eSpeak-ng fallback) and `stages/pos/spacy_tagger.py` (spaCy `fr_core_news_sm`).
+- Core data models added incrementally as each stage needs them (`core/models.py`): `LiaisonDecision`, `PronunciationUnit`, `PhoneScore`, `UnitResult`. `Sentence`, `Chunk`, `Attempt` not needed yet.
+- 53 tests passing (46 fast unit tests, 7 model tests requiring the real spaCy model) — see `tests/README.md`.
+
+**Known data/tooling gaps, not yet resolved:**
+- The real Lexique383 database isn't wired in yet — G2P currently reads from a small hand-written fixture dictionary. Whoever wires in the real corpus will need to adapt the lexicon loader to its actual column format.
+- The native-French-corpus GOP calibration statistics (Decision Log D11) haven't been produced yet — `calibrate_score` takes the stats table as a parameter rather than embedding real numbers.
+
+**Next up (build order step 3):** Sentence parser (LLM-based chunking) + TTS.
 
 **Highest-priority open question, to be resolved early:**
 - **Canonicalizer bias in the free phone recognition branch.** The planned insertion/deletion branch relies on a wav2vec2-based free decoder reporting what the user *actually* said rather than "correcting" it toward canonical French — a documented failure mode in mispronunciation detection literature. Before investing further in that branch, a small diagnostic set (native / substitution / deletion / insertion recordings) needs to be run through the model to check which behavior it exhibits.
 
 **Known limitations (by design, not oversight):**
-- Liaison detection is planned as rule-based, which is expected to be incomplete on unconstrained free-form input containing rare vocabulary, proper nouns, or borrowed words. This is an accepted MVP tradeoff, deferred post-MVP.
+- Liaison detection is rule-based (`stages/liaison/rule_engine.py`), which is expected to be incomplete on unconstrained free-form input containing rare vocabulary, proper nouns, or borrowed words. This is an accepted MVP tradeoff (Decision Log D4), deferred post-MVP.
+- **Confirmed, not just theoretical:** the POS tagger (spaCy `fr_core_news_sm`) mistags "content" (adjective, "happy") as `ADV` even in a full, grammatically correct sentence, which causes the liaison rule engine's "très/trop + ADJ" obligatoire pattern to miss real liaison for this specific word. Locked in as a known limitation for now — see the decision log's POS tagging entry.
 - French support in the underlying acoustic models and tooling generally lags English; several components under consideration (e.g. `fr_kaldi-rhasspy`, `Cnam-LMSSC/wav2vec2-french-phonemizer`) are community-maintained rather than officially supported at the scale of their English equivalents.
 
 ---
 
 ## Getting started
 
-*The commands below reflect the intended workflow once the pipeline is implemented — see [Current status](#current-status).*
+*Steps below reflect what's actually built and tested right now (build order steps 1–2 — see [Current status](#current-status)). Everything under "not yet built" is aspirational, kept here as a placeholder for later stages — see the [Roadmap](docs) for the build order.*
 
 ```bash
 # clone and install
-git clone https://github.com/quynhkhanh96/paulou.git
+git clone https://github.com/<your-username>/paulou.git
+cd paulou                                    # repo root (docs/, this README, SETUP.md, the paulou/ package)
+pip install -r requirements-dev.txt
+python -m spacy download fr_core_news_sm     # separate step — see SETUP.md if this fails
+
+# move into the package to run tests (no packaging / pip install -e . set up yet)
 cd paulou
-pip install -r requirements.txt
 
-# run fast tests (pure functions + contract/invariant checks — no models needed)
-pytest tests/unit tests/contract
+# fast suite — pure functions + G2P dict lookup, no models needed
+pytest tests/unit -v
 
-# run model-backed tests (loads acoustic models — slower)
-pytest tests/model
+# model-backed suite — loads the real spaCy model, slower
+pytest tests/model -v -m model
+```
+
+**Not yet built** (kept as a placeholder for later build-order steps):
+
+```bash
+# tests/contract doesn't exist yet — will hold invariant tests once
+# stochastic stages (sentence parser, TTS) are built
+pytest tests/contract
 
 # run an experiment (compares candidate implementations for a stage)
 python experiments/runners/compare_gop_scorers.py
@@ -119,14 +139,34 @@ Qualitative review notebooks (chunking quality, audio playback, GOP alignment vi
 ## Repo structure
 
 ```
-paulou/
-  core/           # data models, interfaces (Protocol), registry, pipeline config
-  stages/         # one subfolder per pipeline stage, swappable implementations
-  pipeline.py     # PaulouPipeline — single orchestration entry point
-  backend/        # FastAPI app, DB models/repository, background jobs
-  frontend/       # client app (TBD)
-  tests/          # unit / contract / model / api / db
-  experiments/    # implementation comparisons, diagnostic sets, review notebooks
+Paulou/                        # repo root
+  docs/
+    assets/
+  README.md                    # this file
+  SETUP.md                     # local dev setup (venv, dependencies, running tests)
+  requirements-dev.txt
+  .gitignore
+  paulou/                      # the actual Python package
+    core/                      # data models, interfaces (Protocol), registry — built incrementally as stages need them
+    stages/                    # one subfolder per pipeline stage, swappable implementations
+      liaison/                 # implemented — rule engine
+      assembly/                # implemented — unit assembly
+      speech_assessment/       # implemented — calibration, feedback (single units only for MVP, D19)
+      g2p/                     # implemented — fixture lexicon + eSpeak-ng fallback (real Lexique383 not wired in yet)
+      pos/                     # implemented — spaCy fr_core_news_sm
+      parsing/                 # not yet built (build order step 3)
+      tts/                     # not yet built (build order step 3)
+    pipeline.py                # not yet built — PaulouPipeline orchestration entry point
+    backend/                   # not yet built — FastAPI app, DB models/repository, background jobs
+    frontend/                  # not yet built — client app (TBD)
+    tests/
+      unit/                    # implemented — fast, pure functions + G2P dict lookup
+      model/                   # implemented — slow, loads the real spaCy model
+      fixtures/                # implemented — g2p_golden.tsv (fixture lexicon)
+      contract/                # not yet built
+      api/                     # not yet built (no backend yet)
+      db/                      # not yet built (no backend yet)
+    experiments/                # not yet built — implementation comparisons, diagnostic sets, review notebooks
 ```
 
 ---
