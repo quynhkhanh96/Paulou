@@ -8,16 +8,28 @@ testing philosophy.
 
 ```bash
 cd paulou
-pytest tests/unit -v      # verbose, one line per test
-pytest tests/unit         # quiet, summary only
+pytest tests/unit -v                  # fast suite — pure functions + G2P dict lookup
+pytest tests/model -v -m model        # slow suite — loads the real spaCy model (~seconds)
+pytest tests/ -v                      # everything
 ```
 
-No `tests/contract`, `tests/model`, `tests/api`, or `tests/db` directories
-exist yet — only the pure-function stages (build order step 1) have been
-implemented so far. All tests below are Category 1 (pure functions,
-ordinary `pytest` assertions) per the Testing Conventions note; none load
-models or call external services, so the full suite runs in well under a
-second.
+`tests/unit/` holds Category 1 (pure functions, ordinary `pytest`
+assertions) per the Testing Conventions note, plus `test_g2p.py`'s
+dictionary-lookup tests (deterministic, no model loading). A few tests in
+`test_g2p.py` call the real `espeak-ng` binary — a system dependency (`apt
+install espeak-ng`), not a pip package — and are skipped automatically if
+it isn't installed.
+
+`tests/model/` holds Category 3 (requires loading a real trained model —
+here, spaCy's `fr_core_news_sm`) per the Testing Conventions note. Marked
+with `pytest.mark.model` (registered in `pytest.ini`) so it can be excluded
+from the fast suite (`pytest tests/unit -m "not model"` or simply running
+`tests/unit` alone, as above). Skipped automatically if spaCy or the model
+isn't installed.
+
+No `tests/contract`, `tests/api`, or `tests/db` directories exist yet —
+only the stages through build order step 2 (pure functions, G2P, POS
+tagging) have been implemented so far.
 
 ---
 
@@ -95,3 +107,46 @@ MVP-scoped to `single` units only (Decision Log D19).
 | `test_liaison_group_raises_not_implemented` | Verify the MVP scoping (D19) is enforced in code, not just documentation — liaison feedback can't silently return a bogus string. | Raises `NotImplementedError`. |
 | `test_single_unit_without_phone_scores_raises` | Verify the function can't produce an `[X]` template with no phone to name. | Raises `ValueError`. |
 | `test_unknown_unit_type_raises` | Defensive input validation for an invalid `unit_type`. | Raises `ValueError`. |
+
+---
+
+## `test_g2p.py`
+
+Tests `LexiqueEspeakG2P`, `_load_lexicon`, and `_parse_espeak_ipa` in
+`stages/g2p/lexique_espeak.py`. Uses the fixture lexicon
+`tests/fixtures/g2p_golden.tsv` (a small hand-picked dictionary, NOT the
+real Lexique383 database — see that module's docstring). Tests calling the
+real `espeak-ng` binary are marked and skipped if it isn't installed.
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_dict_lookup_returns_source_dict` | Verify a word present in the fixture lexicon is returned from the dictionary, not eSpeak. | `phonemes == ["b","ɔ̃","ʒ","u","ʁ"]`, `source == "dict"`. |
+| `test_dict_lookup_is_case_insensitive` | Verify lookup normalizes case ("Bonjour" matches "bonjour"). | Same result as the lowercase lookup, `source == "dict"`. |
+| `test_load_lexicon_raises_on_malformed_line` | Verify a lexicon file line missing the expected tab-separated format fails loudly instead of silently mis-parsing. | Raises `ValueError`. |
+| `test_missing_lexicon_file_raises` | Verify a nonexistent lexicon path fails clearly at construction time. | Raises `FileNotFoundError`. |
+| `test_parse_espeak_ipa_simple_word` | Verify the parser splits a clean underscore-separated eSpeak string correctly (canned string, no binary needed). | `"b_ɔ̃_ʒ_ˈu_ʁ" -> ["b","ɔ̃","ʒ","u","ʁ"]`. |
+| `test_parse_espeak_ipa_strips_leading_empty_token` | Verify a leading `_` (producing an empty first token, observed on words like "onze") doesn't leak an empty string into the output. | `"_ˈɔ̃_z" -> ["ɔ̃","z"]`. |
+| `test_parse_espeak_ipa_strips_trailing_hyphen` | Verify a stray trailing `-` (a liaison hint, observed on words like "les") is stripped, not treated as part of a phoneme. | `"l_ˈe-" -> ["l","e"]`. |
+| `test_parse_espeak_ipa_single_phoneme_word` | Verify a word with no underscores at all (single phoneme) still parses correctly. | `"ˈœ̃" -> ["œ̃"]`. |
+| `test_fallback_to_espeak_for_unknown_word` *(requires espeak-ng)* | Verify a word absent from the fixture lexicon falls back to eSpeak-ng rather than failing. | `source == "espeak"`, non-empty phoneme list. |
+| `test_espeak_fallback_output_has_no_stress_marks` *(requires espeak-ng)* | Verify stress marks (ˈ, ˌ) from eSpeak's isolated-word synthesis are stripped — they'd be linguistically wrong at the chunk level (French stress is rhythmic-group-level, not lexical). | No phoneme contains `ˈ` or `ˌ`. |
+| `test_espeak_fallback_never_raises_for_unknown_word` *(requires espeak-ng)* | Verify the Codebase Conventions contract: `phonemize()` must never raise for "word not found" — falling back is the designed behavior, not an error path. | `source == "espeak"`, non-empty phoneme list, no exception. |
+
+---
+
+## `test_pos_tagger.py` (`tests/model/`)
+
+Tests `tag_sentence` in `stages/pos/spacy_tagger.py`. Requires the real
+`fr_core_news_sm` spaCy model to be installed — skipped automatically
+otherwise. Marked `pytest.mark.model` (Category 3 — loads a real trained
+model).
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_determiner_noun` | Verify correct tagging of the DET+NOUN liaison example used throughout the liaison rule engine tests. | `[("les","DET"), ("amis","NOUN")]`. |
+| `test_pronoun_verb` | Verify correct tagging of the PRON+VERB liaison example. | `[("nous","PRON"), ("avons","VERB")]`. |
+| `test_adjective_noun` | Verify correct tagging of the ADJ+NOUN liaison example. | `[("petit","ADJ"), ("ami","NOUN")]`. |
+| `test_liaison_chain_sentence` | Verify correct tagging of the 3-word consecutive-liaison example ("les anciens amis"). | `[("les","DET"), ("anciens","ADJ"), ("amis","NOUN")]`. |
+| `test_facultative_example_sentence` | Verify correct tagging of the facultative liaison example ("pas encore"). | `[("pas","ADV"), ("encore","ADV")]`. |
+| `test_subject_noun_verb_requires_full_sentence_context` | Documents an empirically verified gotcha: the same words tagged as an isolated 2-word fragment vs. embedded in a real sentence give different results — tagging must always be done on the full sentence, never on fragments assembled elsewhere. | Fragment `"enfant arrive"` mistags "arrive" as `ADJ`; full sentence `"Mon enfant arrive demain."` correctly tags it `VERB`. |
+| `test_known_limitation_content_mistagged_as_adverb` | Regression-locking test for a known model limitation: "content" (adjective) is reproducibly mistagged as `ADV` even in a full, correct sentence, which would cause the rule engine's "très/trop + ADJ" obligatoire pattern to miss real liaison on this word. If this test ever fails, that means the model improved — update the docstring/decision log note when it does. | `"Il est trop content de venir."` tags "content" as `ADV`. |

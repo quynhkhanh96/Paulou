@@ -1,0 +1,24 @@
+# Dev/test dependencies for the stages built so far (build order steps 1-2:
+# pure functions, G2P, POS tagging — see Roadmap).
+#
+# NOT a pip dependency — install separately as a system package:
+#   apt install espeak-ng        # Debian/Ubuntu
+#   brew install espeak-ng       # macOS
+# Used as the eSpeak-ng fallback in paulou/stages/g2p/lexique_espeak.py.
+# Tests that need it are skipped automatically if it's missing.
+
+pytest>=8
+
+# POS tagging (paulou/stages/pos/spacy_tagger.py) — plain function, no
+# Protocol/registry (Decision Log D26).
+spacy>=3.8
+
+# The French model itself is a separate package, not pulled in by `pip
+# install spacy` alone. Verified against fr_core_news_sm 3.8.0 (Codebase
+# Conventions: pin model-related dependencies) — see SETUP.md for the
+# install command.
+
+# Heavier stage-specific dependencies (Kaldi, PyTorch, HuggingFace
+# transformers, Anthropic/Azure SDKs) are deferred until those stages are
+# actually built, per Codebase Conventions ("Dependency management") — not
+# bundled in up front.

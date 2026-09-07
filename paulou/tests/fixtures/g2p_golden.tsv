@@ -1,0 +1,20 @@
+# Small hand-written fixture lexicon — NOT the real Lexique383 database.
+# Format: word<TAB>phoneme phoneme phoneme... (space-separated, no stress
+# marks — French stress is rhythmic-group-level, not lexical; see the
+# glossary's "accent tonique" entry).
+# Phonemes cross-checked against espeak-ng --ipa=1 output for the same
+# words (with stress marks stripped), and against words already used in
+# tests/unit/test_unit_assembler.py for consistency.
+bonjour	b ɔ̃ ʒ u ʁ
+les	l e
+amis	a m i
+ami	a m i
+petit	p ə t i
+nous	n u
+avons	a v ɔ̃
+chat	ʃ a
+dort	d ɔ ʁ
+grand	ɡ ʁ ɑ̃
+un	œ̃
+deux	d ø
+le	l ə

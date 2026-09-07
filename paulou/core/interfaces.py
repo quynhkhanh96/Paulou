@@ -1,0 +1,23 @@
+"""Protocol definitions for swappable, model-backed pipeline stages.
+
+Structural typing only (typing.Protocol) — implementations don't need to
+import or subclass these; matching the method signature is enough
+(Codebase Conventions). Kept here as a single source of truth for each
+stage's expected interface.
+
+Per Decision Log D12, only stages with an external/model dependency likely
+to be swapped or compared get a Protocol here: sentence parser, G2P source,
+TTS provider, GOP scorer, free-phone recognizer. POS tagging is deliberately
+NOT here — see Decision Log D26 (plain class, not registry-swappable).
+Pure, deterministic logic (liaison rules, unit assembly, calibration,
+feedback, etc.) is also not here — see D12.
+
+Added incrementally as each stage is actually built, not all at once
+up front (same convention as core/models.py).
+"""
+
+from typing import Protocol
+
+
+class G2PProvider(Protocol):
+    def phonemize(self, word: str) -> tuple[list[str], str]: ...
