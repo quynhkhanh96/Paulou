@@ -1,6 +1,6 @@
 # Paulou
 
-![Paulou hero image](docs/assets/hero.png)
+![Paulou hero image](docs/assets/hero.jpg)
 
 A French pronunciation practice app: users input any sentence they want to practice — not just pre-scripted content — and the app breaks it down into rhythmic chunks, then into word- and phoneme-level units, with liaison-aware guidance and speech assessment feedback at each level.
 
