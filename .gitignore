@@ -1,0 +1,85 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Environment / secrets ---
+# API keys (Claude API, Azure TTS/Speech) live in env vars, never committed
+# (Codebase Conventions: "Configuration and secrets")
+.env
+.env.*
+!.env.example
+
+# --- Testing / tooling caches ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+
+# --- IDE / editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# --- Jupyter (experiments/notebooks) ---
+.ipynb_checkpoints/
+
+# --- Model weights / acoustic models ---
+# Kaldi + acoustic models, HuggingFace model caches, converted checkpoints.
+# These are large and pinned by version (Decision Log D11, D20-adjacent notes on
+# calibration/model pinning) rather than committed as blobs.
+*.pt
+*.ckpt
+*.bin
+*.onnx
+models/
+.cache/huggingface/
+
+# --- Audio / TTS output ---
+# TTS-generated clips (cached per D7: hash(text + voice + rate)) and any
+# locally-recorded attempt audio should not be committed.
+*.wav
+*.mp3
+*.flac
+tts_cache/
+
+# NOTE: the diagnostic audio set under paulou/tests/fixtures/diagnostic_audio/
+# (native/substitution/deletion/insertion) is explicitly required to be
+# *version-pinned* per the Testing Conventions note ("must be version-pinned
+# so a comparison run today and one run in three months use the same data").
+# A blanket *.wav ignore above would silently exclude it from git too.
+# Decide explicitly whether that fixture set is tracked via Git LFS or an
+# external pinned store (e.g. a hash-tagged bucket) — flagging this rather
+# than silently letting .gitignore decide it. Until resolved, keep this
+# explicit allow so the fixture set itself is never silently dropped:
+!paulou/tests/fixtures/diagnostic_audio/**
+
+# --- Experiments ---
+# Keep result summaries (json/md) tracked; ignore large raw run artifacts.
+paulou/experiments/results/**/*.wav
+paulou/experiments/results/**/*.npy
+paulou/experiments/results/**/*.pt
+
+# --- Backend / DB ---
+*.sqlite3
+*.db
+paulou/backend/db/migrations/versions/__pycache__/
+
+# --- OS junk ---
+Thumbs.db
