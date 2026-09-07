@@ -104,7 +104,7 @@ The core pipeline (`core/`, `stages/`, `pipeline.py`) is plain Python with no de
 
 ```bash
 # clone and install
-git clone https://github.com/<your-username>/paulou.git
+git clone https://github.com/quynhkhanh96/paulou.git
 cd paulou                                    # repo root (docs/, this README, SETUP.md, the paulou/ package)
 pip install -r requirements-dev.txt
 python -m spacy download fr_core_news_sm     # separate step — see SETUP.md if this fails
