@@ -1,9 +1,9 @@
 # Setup
 
 Instructions to get the repo running locally, as it stands right now
-(Roadmap build order steps 1-2: pure functions, G2P, POS tagging). This
-will grow once the remaining model-backed stages (sentence parser, TTS,
-GOP scorer, free-phone recognizer) exist — see the note at the bottom.
+(Roadmap build order steps 1–2, plus the sentence-parser half of step 3 —
+TTS is still pending). This will grow further once TTS, the GOP scorer,
+and the free-phone recognizer exist — see the note at the bottom.
 
 ## Prerequisites
 
@@ -21,6 +21,12 @@ GOP scorer, free-phone recognizer) exist — see the note at the bottom.
   ```
   Not required just to get the repo running — tests that need it are
   skipped automatically if it's missing (see `paulou/tests/README.md`).
+- **A Gemini API key.** Used by the sentence parser
+  (`paulou/stages/parsing/gemini_parser.py`). Get one at
+  [aistudio.google.com/apikey](https://aistudio.google.com/apikey). Also
+  not required just to get the repo running — tests that need it are
+  skipped automatically if it's missing (see step 5 below for where it
+  goes).
 
 ## Steps
 
@@ -56,20 +62,38 @@ GOP scorer, free-phone recognizer) exist — see the note at the bottom.
    pip install https://github.com/explosion/spacy-models/releases/download/fr_core_news_sm-3.8.0/fr_core_news_sm-3.8.0-py3-none-any.whl
    ```
 
-5. **Run the tests** to confirm everything works. Tests live inside the
+5. **Set up your `.env` file** (needed for the sentence parser's contract
+   tests, and for actually calling `GeminiSentenceParser`). Copy the
+   example and fill in your real key:
+   ```bash
+   cp .env.example .env
+   ```
+   Then edit `.env` (repo root — same directory as this file, NOT inside
+   `paulou/`) so it contains:
+   ```
+   GEMINI_API_KEY=your-real-key-here
+   ```
+   `paulou/stages/parsing/gemini_parser.py` finds this automatically via
+   `python-dotenv`, regardless of which directory you run commands from.
+
+6. **Run the tests** to confirm everything works. Tests live inside the
    `paulou/` package directory (no packaging / `pip install -e .` set up
    yet, so imports resolve relative to running from inside `paulou/`):
    ```bash
    cd paulou
    pytest tests/unit -v              # fast suite
    pytest tests/model -v -m model    # slow suite — loads the real spaCy model
+   pytest tests/contract -v          # calls the real Gemini API, needs GEMINI_API_KEY
    ```
-   All 53 tests should pass (46 fast + 7 model) if both `espeak-ng` and the
-   spaCy model are installed. If either is missing, the tests that need it
-   are skipped, not failed. See `paulou/tests/README.md` for what each
-   individual test checks.
+   All 58 tests should pass (46 fast + 7 model + 5 contract) if
+   `espeak-ng`, the spaCy model, and `GEMINI_API_KEY` are all set up. If
+   any is missing, the tests that need it are skipped, not failed — except
+   the contract tests will genuinely fail (not skip) if `GEMINI_API_KEY`
+   is set but invalid/out of quota, since at that point a real API call is
+   attempted. See `paulou/tests/README.md` for what each individual test
+   checks.
 
-6. **Run the code directly**, if you want to explore interactively (still
+7. **Run the code directly**, if you want to explore interactively (still
    from inside `paulou/`):
    ```bash
    python3
@@ -83,8 +107,7 @@ Per the Codebase Conventions note ("Dependency management"), heavier,
 stage-specific dependencies are meant to be added as separate extras groups
 once those stages are actually built — not bundled in up front:
 
-- **Sentence parser + TTS** (build order step 3): Anthropic API client,
-  Azure TTS SDK.
+- **TTS** (rest of build order step 3): Azure TTS SDK.
 - **GOP scorer** (build order step 4): Kaldi (with its own non-Python
   setup — see `docs/kaldi_setup.md`, not written yet) and/or PyTorch for
   `gop-ft`.
