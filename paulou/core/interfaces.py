@@ -19,5 +19,9 @@ up front (same convention as core/models.py).
 from typing import Protocol
 
 
+class SentenceParser(Protocol):
+    def parse(self, sentence: str) -> list[str]: ...
+
+
 class G2PProvider(Protocol):
     def phonemize(self, word: str) -> tuple[list[str], str]: ...

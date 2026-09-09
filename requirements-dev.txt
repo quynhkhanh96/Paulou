@@ -18,7 +18,18 @@ spacy>=3.8
 # Conventions: pin model-related dependencies) — see SETUP.md for the
 # install command.
 
+# Sentence parser (paulou/stages/parsing/gemini_parser.py) — Gemini API,
+# not Claude API as the Architecture Spec names (Decision Log D27).
+# Requires >=2.3.0 for the Interactions API (client.interactions.create);
+# verified against 2.22.0.
+google-genai>=2.3.0
+
+# Loads GEMINI_API_KEY from a .env file at the repo root (see .env.example)
+# — never hardcoded, never passed through PipelineConfig (Codebase
+# Conventions).
+python-dotenv>=1.0
+
 # Heavier stage-specific dependencies (Kaldi, PyTorch, HuggingFace
-# transformers, Anthropic/Azure SDKs) are deferred until those stages are
-# actually built, per Codebase Conventions ("Dependency management") — not
-# bundled in up front.
+# transformers, Azure SDK) are deferred until those stages are actually
+# built, per Codebase Conventions ("Dependency management") — not bundled
+# in up front.

@@ -10,6 +10,7 @@ testing philosophy.
 cd paulou
 pytest tests/unit -v                  # fast suite — pure functions + G2P dict lookup
 pytest tests/model -v -m model        # slow suite — loads the real spaCy model (~seconds)
+pytest tests/contract -v              # calls the real Gemini API — needs GEMINI_API_KEY
 pytest tests/ -v                      # everything
 ```
 
@@ -27,9 +28,14 @@ from the fast suite (`pytest tests/unit -m "not model"` or simply running
 `tests/unit` alone, as above). Skipped automatically if spaCy or the model
 isn't installed.
 
-No `tests/contract`, `tests/api`, or `tests/db` directories exist yet —
-only the stages through build order step 2 (pure functions, G2P, POS
-tagging) have been implemented so far.
+`tests/contract/` holds Category 2 (stochastic modules, checked via
+invariants, not exact output) per the Testing Conventions note. Calls the
+real Gemini API — needs `GEMINI_API_KEY` set (repo-root `.env`, see
+`.env.example`) and costs quota; skipped automatically if the key isn't
+set.
+
+No `tests/api` or `tests/db` directories exist yet — no backend has been
+built (build order step 3+ still in progress).
 
 ---
 
@@ -150,3 +156,18 @@ model).
 | `test_facultative_example_sentence` | Verify correct tagging of the facultative liaison example ("pas encore"). | `[("pas","ADV"), ("encore","ADV")]`. |
 | `test_subject_noun_verb_requires_full_sentence_context` | Documents an empirically verified gotcha: the same words tagged as an isolated 2-word fragment vs. embedded in a real sentence give different results — tagging must always be done on the full sentence, never on fragments assembled elsewhere. | Fragment `"enfant arrive"` mistags "arrive" as `ADJ`; full sentence `"Mon enfant arrive demain."` correctly tags it `VERB`. |
 | `test_known_limitation_content_mistagged_as_adverb` | Regression-locking test for a known model limitation: "content" (adjective) is reproducibly mistagged as `ADV` even in a full, correct sentence, which would cause the rule engine's "très/trop + ADJ" obligatoire pattern to miss real liaison on this word. If this test ever fails, that means the model improved — update the docstring/decision log note when it does. | `"Il est trop content de venir."` tags "content" as `ADV`. |
+
+---
+
+## `test_chunking_invariants.py` (`tests/contract/`)
+
+Tests `GeminiSentenceParser` in `stages/parsing/gemini_parser.py`. Calls
+the real Gemini API — requires `GEMINI_API_KEY` (repo-root `.env`),
+skipped automatically otherwise. Per Testing Conventions, chunking is
+stochastic (LLM-based), so these check invariants that must always hold —
+NOT exact expected chunk boundaries.
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_chunking_preserves_all_text` (parametrized, 4 sentences) | Verify no text is lost or added when a sentence is split into chunks, and no chunk is empty — the core invariant any chunking implementation must satisfy regardless of *where* it draws the boundaries. | Chunks are non-empty; whitespace/case-normalized, concatenated chunks equal the original sentence. |
+| `test_chunking_returns_a_list_of_strings` | Verify the structured-output JSON parses into the expected Python shape (`list[str]`), catching a malformed schema response early. | `isinstance(chunks, list)` and every element is a `str`. |
