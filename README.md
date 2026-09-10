@@ -100,7 +100,7 @@ The core pipeline (`core/`, `stages/`, `pipeline.py`) is plain Python with no de
 
 ## Getting started
 
-*Steps below reflect what's actually built and tested right now (build order steps 1–2 — see [Current status](#current-status)). Everything under "not yet built" is aspirational, kept here as a placeholder for later stages — see the [Roadmap](docs) for the build order.*
+*Steps below reflect what's actually built and tested right now (build order steps 1–2 — see [Current status](#current-status)). Everything under "not yet built" is aspirational, kept here as a placeholder for later stages — see the [Roadmap](docs/roadmap.md) for the build order.*
 
 ```bash
 # clone and install
