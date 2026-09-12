@@ -1,4 +1,4 @@
-from stages.liaison.rule_engine import apply_liaison_rules, get_liaison_consonant
+from stages.chunk_analyzer.liaison.rule_engine import apply_liaison_rules, get_liaison_consonant
 
 
 def test_obligatoire_determiner_noun():

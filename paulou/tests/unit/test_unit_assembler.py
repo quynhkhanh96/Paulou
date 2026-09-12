@@ -1,7 +1,7 @@
 import pytest
 
 from core.models import LiaisonDecision
-from stages.assembly.unit_assembler import assemble_units
+from stages.chunk_analyzer.assembly.unit_assembler import assemble_units
 
 
 def _no_liaison(word1: str, word2: str) -> LiaisonDecision:
@@ -111,3 +111,83 @@ def test_raises_on_mismatched_decision_count():
 
     with pytest.raises(ValueError):
         assemble_units(words, wrong_decisions)
+
+
+# --- Elision (added after the original design — see elision.py) -----------
+
+def test_elision_group_formed():
+    words = [("l'", ["l"]), ("ami", ["a", "m", "i"])]
+    decisions = [_no_liaison("l'", "ami")]
+
+    units = assemble_units(words, decisions)
+
+    assert len(units) == 1
+    unit = units[0]
+    assert unit.type == "elision_group"
+    assert unit.words == ["l'", "ami"]
+    assert unit.ipa == "lami"
+    assert unit.liaison_consonant is None
+    assert unit.scoring_focus == "elision_correctness"
+
+
+def test_elision_overrides_possibly_wrong_g2p_phonemes():
+    # words_with_phonemes carries whatever G2P produced for "l'" — which,
+    # per the confirmed eSpeak-ng bug (isolated "l'" mispronounced as the
+    # letter name "elle" -> /ɛl/), would be wrong. assemble_units ignores
+    # this and substitutes the correct closed-list phoneme (/l/) instead —
+    # this is a real, practical side benefit of the elision fix, not just a
+    # theoretical one.
+    words = [("l'", ["ɛ", "l"]), ("ami", ["a", "m", "i"])]  # ["ɛ","l"] = the wrong eSpeak output
+    decisions = [_no_liaison("l'", "ami")]
+
+    units = assemble_units(words, decisions)
+
+    assert units[0].ipa == "lami"  # correct — NOT "ɛlami"
+
+
+def test_elision_takes_priority_over_liaison_decision_at_same_position():
+    # Synthetic/unrealistic LiaisonDecision — real apply_liaison_rules would
+    # never produce applies=True here, since get_liaison_consonant("l'") is
+    # None. This defensively locks in the documented priority: elision is
+    # checked first, regardless of what the liaison decision says.
+    words = [("l'", ["l"]), ("ami", ["a", "m", "i"])]
+    decisions = [_liaison("l'", "ami", "z")]  # should be ignored
+
+    units = assemble_units(words, decisions)
+
+    assert len(units) == 1
+    assert units[0].type == "elision_group"
+    assert units[0].liaison_consonant is None
+
+
+def test_mixed_elision_single_and_liaison_group():
+    # "j'ai un ami" -> j'+ai (elision_group), un+ami (liaison_group)
+    words = [
+        ("j'", ["ʒ"]),
+        ("ai", ["ɛ"]),
+        ("un", ["œ̃"]),
+        ("ami", ["a", "m", "i"]),
+    ]
+    decisions = [
+        _no_liaison("j'", "ai"),
+        _no_liaison("ai", "un"),
+        _liaison("un", "ami", "n"),
+    ]
+
+    units = assemble_units(words, decisions)
+
+    assert len(units) == 2
+    assert units[0].type == "elision_group"
+    assert units[0].words == ["j'", "ai"]
+    assert units[1].type == "liaison_group"
+    assert units[1].words == ["un", "ami"]
+    assert units[1].liaison_consonant == "n"
+
+
+def test_elision_as_last_word_raises():
+    # Malformed input: an elided clitic with nothing after it to fuse with.
+    words = [("amis", ["a", "m", "i"]), ("l'", ["l"])]
+    decisions = [_no_liaison("amis", "l'")]
+
+    with pytest.raises(ValueError):
+        assemble_units(words, decisions)

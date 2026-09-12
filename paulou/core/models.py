@@ -30,20 +30,29 @@ class LiaisonDecision:
     rule_type: LiaisonRuleType
 
 
-PronunciationUnitType = Literal["single", "liaison_group"]
-ScoringFocus = Literal["phoneme_accuracy", "liaison_presence_and_continuity"]
+PronunciationUnitType = Literal["single", "liaison_group", "elision_group"]
+ScoringFocus = Literal[
+    "phoneme_accuracy",
+    "liaison_presence_and_continuity",
+    "elision_correctness",
+]
 
 
 @dataclass(frozen=True)
 class PronunciationUnit:
     """The atomic unit of practice and scoring in Paulou.
 
-    See Architecture Spec, Data model section, and Decision Log D3.
+    See Architecture Spec, Data model section, and Decision Log D3. Extended
+    with `type="elision_group"` beyond what the Architecture Spec originally
+    specced — elision (see stages/chunk_analyzer/elision/elision.py) is a distinct
+    phenomenon from liaison, added when the gap was noticed during Chunk
+    Analyzer implementation. `liaison_consonant` is None for elision_group
+    (no consonant is added in elision — see elision.py).
 
     NOTE (gap, not yet specced anywhere): `syllables` and `note` have no
     owning stage in the Architecture Spec — no syllabifier, no pedagogical
     note generator. Left as empty placeholders (`[]`, `""`) by
-    stages/assembly/unit_assembler.py until that's designed.
+    stages/chunk_analyzer/assembly/unit_assembler.py until that's designed.
     """
 
     id: str

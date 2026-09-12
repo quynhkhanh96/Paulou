@@ -13,7 +13,7 @@ pytestmark = [
     pytest.mark.skipif(not _MODEL_AVAILABLE, reason="fr_core_news_sm model not installed"),
 ]
 
-from stages.pos.spacy_tagger import tag_sentence  # noqa: E402
+from stages.chunk_analyzer.pos.spacy_tagger import tag_sentence  # noqa: E402
 
 
 def test_determiner_noun():
@@ -44,7 +44,7 @@ def test_subject_noun_verb_requires_full_sentence_context():
     # Documents an empirically verified difference: the same words tagged
     # as an isolated 2-word fragment vs. embedded in a real sentence give
     # different (and differently correct) results. See module docstring
-    # in stages/pos/spacy_tagger.py.
+    # in stages/chunk_analyzer/pos/spacy_tagger.py.
     fragment_result = tag_sentence("enfant arrive")
     sentence_result = tag_sentence("Mon enfant arrive demain.")
 
@@ -59,7 +59,7 @@ def test_subject_noun_verb_requires_full_sentence_context():
 
 def test_known_limitation_content_mistagged_as_adverb():
     # Regression-locking test for the known limitation documented in
-    # stages/pos/spacy_tagger.py: "content" (adjective) is reproducibly
+    # stages/chunk_analyzer/pos/spacy_tagger.py: "content" (adjective) is reproducibly
     # mistagged as ADV even in a full, correct sentence. If this test ever
     # FAILS (i.e. "content" gets tagged ADJ), that's good news — it means
     # the model improved — but the docstring/decision log note about this

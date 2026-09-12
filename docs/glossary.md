@@ -12,6 +12,7 @@ Reference for terms used throughout the other notes (Decision Log, Architecture 
   - **Obligatoire** — liaison must occur (e.g. determiner + noun).
   - **Interdite** — liaison must never occur (e.g. after "et", before h-aspiré words).
   - **Facultative** — liaison is optional/style-dependent; Paulou doesn't predict a single "correct" answer here (see Decision Log D4) and accepts either variant.
+- **Elision** — the dropping of a word's final vowel before a following vowel-initial word, marked orthographically with an apostrophe. Limited to a small closed set of French function words: *le/la, de, je, me, te, se, ne, que, ce* → *l', d', j', m', t', s', n', qu', c'* (e.g. *l'ami* /l‿a.mi/). Distinct from liaison: no consonant is added, only a vowel is removed; and it's not a "decision" the way liaison is — seeing the elided form in text is itself proof the fusion already happened. Mutually exclusive with liaison on the same word (elidable words end in a vowel, so there's no final consonant for liaison to act on). See Decision Log D28.
 - **Enchaînement** — related but distinct from liaison: the resyllabification of an *already-pronounced* final consonant onto the next word's vowel-initial syllable (e.g. *elle arrive* → /ɛ.la.ʁiv/), rather than a normally-silent letter becoming pronounced. Paulou's current liaison modeling focuses on liaison specifically; enchaînement is linguistically adjacent but not separately modeled as of now.
 - **H-aspiré (aspirated h)** — a class of French words starting with "h" that behave as if they start with a consonant for liaison purposes (blocking liaison) even though the "h" itself is silent, e.g. "les héros" has no liaison. Handled in the rule engine as a closed list, not a general rule.
 - **Schwa** — the neutral/mute "e" sound (/ə/), often dropped in casual speech (e.g. "je" → /ʒ/ alone). Noted in pronunciation guidance as a common area of learner confusion.
@@ -36,9 +37,9 @@ Reference for terms used throughout the other notes (Decision Log, Architecture 
 
 ## Paulou-specific terms
 
-- **PronunciationUnit** — the atomic unit of practice and scoring in Paulou; either a `single` word or a `liaison_group` (2+ words joined by liaison). See Architecture Spec for full schema.
+- **PronunciationUnit** — the atomic unit of practice and scoring in Paulou; a `single` word, a `liaison_group` (2 words joined by liaison), or an `elision_group` (2 words joined by elision). See Architecture Spec for full schema.
 - **Chunk** — a rhythmic-group-sized piece of a sentence, containing one or more `PronunciationUnit`s. The intermediate level between a full sentence and individual pronunciation units.
-- **scoring_focus** — a field on `PronunciationUnit` indicating which kind of error the unit is scored for: `phoneme_accuracy` (substitution-style scoring, for `single` units) or `liaison_presence_and_continuity` (does the liaison sound exist and is it not awkwardly paused, for `liaison_group` units).
+- **scoring_focus** — a field on `PronunciationUnit` indicating which kind of error the unit is scored for: `phoneme_accuracy` (substitution-style scoring, for `single` units), `liaison_presence_and_continuity` (does the liaison sound exist and is it not awkwardly paused, for `liaison_group` units), or `elision_correctness` (for `elision_group` units).
 - **Branch 1 / Branch 2** — shorthand used throughout the notes for the two parallel Speech Assessment paths: Branch 1 = GOP/forced-align (substitution detection), Branch 2 = free phone recognition (insertion/deletion detection). See Architecture Spec, stage 5.
 
 ---

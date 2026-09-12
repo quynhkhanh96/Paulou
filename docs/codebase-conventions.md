@@ -36,9 +36,9 @@ This is the most common type of change expected (e.g. trying `gop-ft` alongside 
 ## Naming conventions
 
 - **Files:** `snake_case.py`, named after what they contain, not the vendor (`kaldi_gop.py` is fine since it names the specific implementation; a file with multiple candidate implementations should be split, not combined, so the registry decorator per file stays easy to find).
-- **Classes implementing a Protocol:** suffix with the role, not "Impl" — `KaldiGOPScorer`, `AzureTTSProvider`, `ClaudeSentenceParser` — the class name should make sense read standalone in a stack trace or log line.
+- **Classes implementing a Protocol:** suffix with the role, not "Impl" — `KaldiGOPScorer`, `AzureTTSProvider`, `GeminiSentenceParser` — the class name should make sense read standalone in a stack trace or log line.
 - **Pure functions:** name as verbs describing the transformation — `apply_liaison_rules`, `assemble_units`, `align_phonemes`, `calibrate_score` — avoid vague names like `process` or `handle`.
-- **Test files:** mirror the module path (`stages/liaison/rule_engine.py` → `tests/unit/test_liaison_rules.py`); contract tests named `test_<stage>_contract.py` regardless of which implementation is under test, since the point is the shared contract, not one implementation.
+- **Test files:** mirror the module path (`stages/chunk_analyzer/liaison/rule_engine.py` → `tests/unit/test_liaison_rules.py`); contract tests named `test_<stage>_contract.py` regardless of which implementation is under test, since the point is the shared contract, not one implementation.
 
 ---
 

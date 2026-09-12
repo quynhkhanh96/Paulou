@@ -43,11 +43,12 @@ User input (sentence)
 
 | Stage | Folder | What it does |
 |---|---|---|
-| Sentence parsing | [`stages/parsing/`](stages/parsing/) | LLM-based chunking into rhythmic groups |
-| G2P | [`stages/g2p/`](stages/g2p/) | Word → phonemes (Lexique383 + eSpeak-ng fallback) |
-| POS tagging | [`stages/pos/`](stages/pos/) | Needed to apply liaison rules correctly |
-| Liaison rules | [`stages/liaison/`](stages/liaison/) | Obligatoire / interdite / facultative rule engine |
-| Unit assembly | [`stages/assembly/`](stages/assembly/) | Groups words into `single` or `liaison_group` `PronunciationUnit`s |
+| Sentence parsing | [`stages/parsing/`](stages/parsing/) | LLM-based chunking into rhythmic groups (Gemini API, Decision Log D27) |
+| G2P | [`stages/chunk_analyzer/g2p/`](stages/chunk_analyzer/g2p/) | Word → phonemes (Lexique383 + eSpeak-ng fallback) |
+| POS tagging | [`stages/chunk_analyzer/pos/`](stages/chunk_analyzer/pos/) | Needed to apply liaison rules correctly |
+| Liaison rules | [`stages/chunk_analyzer/liaison/`](stages/chunk_analyzer/liaison/) | Obligatoire / interdite / facultative rule engine |
+| Elision detection | [`stages/chunk_analyzer/elision/`](stages/chunk_analyzer/elision/) | Closed-list lookup for elided clitics (l', d', j', ...) — distinct from liaison, Decision Log D28 |
+| Unit assembly | [`stages/chunk_analyzer/assembly/`](stages/chunk_analyzer/assembly/) | Groups words into `single`, `liaison_group`, or `elision_group` `PronunciationUnit`s |
 | TTS | [`stages/tts/`](stages/tts/) | Sentence-level synthesis with word-boundary timestamps |
 | GOP scoring | [`stages/speech_assessment/gop/`](stages/speech_assessment/gop/) | Forced-align + goodness-of-pronunciation, catches substitutions |
 | Free decoding | [`stages/speech_assessment/free_decode/`](stages/speech_assessment/free_decode/) | Unconstrained phone recognition, catches insertions/deletions (liaison dropped or added) |
@@ -74,25 +75,26 @@ The core pipeline (`core/`, `stages/`, `pipeline.py`) is plain Python with no de
 
 ## Current status
 
-**Build order steps 1–2 (Roadmap) are implemented and tested.** Steps 3+ (sentence parser, TTS, GOP scorer, free-phone recognizer) are still at the design stage — decided in the Architecture Spec, not yet built.
+**Build order steps 1–2 (Roadmap) are implemented and tested, plus the sentence-parser half of step 3.** TTS (rest of step 3), GOP scorer, and free-phone recognizer are still at the design stage — decided in the Architecture Spec, not yet built.
 
 **Implemented so far:**
-- **Pure functions** (step 1): liaison rule engine (`stages/liaison/rule_engine.py`), unit assembly (`stages/assembly/unit_assembler.py`), calibration (`stages/speech_assessment/calibration.py`), feedback templating (`stages/speech_assessment/feedback.py` — scoped to `single` units for MVP, see Decision Log D19).
-- **G2P + POS tagging** (step 2): `stages/g2p/lexique_espeak.py` (Lexique383 lookup + eSpeak-ng fallback) and `stages/pos/spacy_tagger.py` (spaCy `fr_core_news_sm`).
+- **Pure functions** (step 1): liaison rule engine (`stages/chunk_analyzer/liaison/rule_engine.py`), elision detection (`stages/chunk_analyzer/elision/elision.py`, Decision Log D28), unit assembly (`stages/chunk_analyzer/assembly/unit_assembler.py`), calibration (`stages/speech_assessment/calibration.py`), feedback templating (`stages/speech_assessment/feedback.py` — scoped to `single` units for MVP, see Decision Log D19).
+- **G2P + POS tagging** (step 2): `stages/chunk_analyzer/g2p/lexique_espeak.py` (Lexique383 lookup + eSpeak-ng fallback) and `stages/chunk_analyzer/pos/spacy_tagger.py` (spaCy `fr_core_news_sm`).
+- **Sentence parser** (step 3, partial — TTS still pending): `stages/parsing/gemini_parser.py` (Gemini API, Decision Log D27).
 - Core data models added incrementally as each stage needs them (`core/models.py`): `LiaisonDecision`, `PronunciationUnit`, `PhoneScore`, `UnitResult`. `Sentence`, `Chunk`, `Attempt` not needed yet.
-- 53 tests passing (46 fast unit tests, 7 model tests requiring the real spaCy model) — see `tests/README.md`.
+- 68 tests passing (56 fast unit tests, 7 model tests requiring the real spaCy model, 5 contract tests requiring a real Gemini API key) — see `tests/README.md`.
 
 **Known data/tooling gaps, not yet resolved:**
 - The real Lexique383 database isn't wired in yet — G2P currently reads from a small hand-written fixture dictionary. Whoever wires in the real corpus will need to adapt the lexicon loader to its actual column format.
 - The native-French-corpus GOP calibration statistics (Decision Log D11) haven't been produced yet — `calibrate_score` takes the stats table as a parameter rather than embedding real numbers.
 
-**Next up (build order step 3):** Sentence parser (LLM-based chunking) + TTS.
+**Next up (rest of build order step 3):** TTS.
 
 **Highest-priority open question, to be resolved early:**
 - **Canonicalizer bias in the free phone recognition branch.** The planned insertion/deletion branch relies on a wav2vec2-based free decoder reporting what the user *actually* said rather than "correcting" it toward canonical French — a documented failure mode in mispronunciation detection literature. Before investing further in that branch, a small diagnostic set (native / substitution / deletion / insertion recordings) needs to be run through the model to check which behavior it exhibits.
 
 **Known limitations (by design, not oversight):**
-- Liaison detection is rule-based (`stages/liaison/rule_engine.py`), which is expected to be incomplete on unconstrained free-form input containing rare vocabulary, proper nouns, or borrowed words. This is an accepted MVP tradeoff (Decision Log D4), deferred post-MVP.
+- Liaison detection is rule-based (`stages/chunk_analyzer/liaison/rule_engine.py`), which is expected to be incomplete on unconstrained free-form input containing rare vocabulary, proper nouns, or borrowed words. This is an accepted MVP tradeoff (Decision Log D4), deferred post-MVP.
 - **Confirmed, not just theoretical:** the POS tagger (spaCy `fr_core_news_sm`) mistags "content" (adjective, "happy") as `ADV` even in a full, grammatically correct sentence, which causes the liaison rule engine's "très/trop + ADJ" obligatoire pattern to miss real liaison for this specific word. Locked in as a known limitation for now — see the decision log's POS tagging entry.
 - French support in the underlying acoustic models and tooling generally lags English; several components under consideration (e.g. `fr_kaldi-rhasspy`, `Cnam-LMSSC/wav2vec2-french-phonemizer`) are community-maintained rather than officially supported at the scale of their English equivalents.
 
@@ -100,7 +102,7 @@ The core pipeline (`core/`, `stages/`, `pipeline.py`) is plain Python with no de
 
 ## Getting started
 
-*Steps below reflect what's actually built and tested right now (build order steps 1–2 — see [Current status](#current-status)). Everything under "not yet built" is aspirational, kept here as a placeholder for later stages — see the [Roadmap](docs/roadmap.md) for the build order.*
+*Steps below reflect what's actually built and tested right now (build order steps 1–2, plus the sentence-parser half of step 3 — see [Current status](#current-status)). Everything under "not yet built" is aspirational, kept here as a placeholder for later stages — see the [Roadmap](docs/roadmap.md) for the build order.*
 
 ```bash
 # clone and install
@@ -108,6 +110,7 @@ git clone https://github.com/quynhkhanh96/paulou.git
 cd paulou                                    # repo root (docs/, this README, SETUP.md, the paulou/ package)
 pip install -r requirements-dev.txt
 python -m spacy download fr_core_news_sm     # separate step — see SETUP.md if this fails
+cp .env.example .env                         # then fill in GEMINI_API_KEY — see SETUP.md
 
 # move into the package to run tests (no packaging / pip install -e . set up yet)
 cd paulou
@@ -117,15 +120,14 @@ pytest tests/unit -v
 
 # model-backed suite — loads the real spaCy model, slower
 pytest tests/model -v -m model
+
+# contract suite — calls the real Gemini API, needs GEMINI_API_KEY
+pytest tests/contract -v
 ```
 
 **Not yet built** (kept as a placeholder for later build-order steps):
 
 ```bash
-# tests/contract doesn't exist yet — will hold invariant tests once
-# stochastic stages (sentence parser, TTS) are built
-pytest tests/contract
-
 # run an experiment (compares candidate implementations for a stage)
 python experiments/runners/compare_gop_scorers.py
 ```
@@ -140,33 +142,36 @@ Qualitative review notebooks (chunking quality, audio playback, GOP alignment vi
 
 ```
 Paulou/                        # repo root
-  docs/
-    assets/
-  README.md                    # this file
-  SETUP.md                     # local dev setup (venv, dependencies, running tests)
-  requirements-dev.txt
-  .gitignore
-  paulou/                      # the actual Python package
-    core/                      # data models, interfaces (Protocol), registry — built incrementally as stages need them
-    stages/                    # one subfolder per pipeline stage, swappable implementations
-      liaison/                 # implemented — rule engine
-      assembly/                # implemented — unit assembly
-      speech_assessment/       # implemented — calibration, feedback (single units only for MVP, D19)
-      g2p/                     # implemented — fixture lexicon + eSpeak-ng fallback (real Lexique383 not wired in yet)
-      pos/                     # implemented — spaCy fr_core_news_sm
-      parsing/                 # not yet built (build order step 3)
-      tts/                     # not yet built (build order step 3)
-    pipeline.py                # not yet built — PaulouPipeline orchestration entry point
-    backend/                   # not yet built — FastAPI app, DB models/repository, background jobs
-    frontend/                  # not yet built — client app (TBD)
-    tests/
-      unit/                    # implemented — fast, pure functions + G2P dict lookup
-      model/                   # implemented — slow, loads the real spaCy model
-      fixtures/                # implemented — g2p_golden.tsv (fixture lexicon)
-      contract/                # not yet built
-      api/                     # not yet built (no backend yet)
-      db/                      # not yet built (no backend yet)
-    experiments/                # not yet built — implementation comparisons, diagnostic sets, review notebooks
+├── docs/
+│   └── assets/
+├── README.md                    # this file
+├── SETUP.md                     # local dev setup (venv, dependencies, running tests)
+├── requirements-dev.txt
+├── .env.example                 # GEMINI_API_KEY — copy to .env at this same level
+├── .gitignore
+└── paulou/                      # the actual Python package
+    ├── core/                    # data models, interfaces (Protocol), registry — built incrementally as stages need them
+    ├── stages/                  # one subfolder per pipeline stage, swappable implementations
+    │   ├── parsing/             # implemented — Gemini API sentence parser (Decision Log D27)
+    │   ├── chunk_analyzer/      # stage 2's sub-modules, nested here (Decision Log D29)
+    │   │   ├── liaison/         # implemented — rule engine
+    │   │   ├── elision/         # implemented — closed-list clitic detection (Decision Log D28)
+    │   │   ├── assembly/        # implemented — unit assembly
+    │   │   ├── g2p/             # implemented — fixture lexicon + eSpeak-ng fallback (real Lexique383 not wired in yet)
+    │   │   └── pos/             # implemented — spaCy fr_core_news_sm
+    │   ├── speech_assessment/   # implemented — calibration, feedback (single units only for MVP, D19)
+    │   └── tts/                 # not yet built (rest of build order step 3)
+    ├── pipeline.py              # not yet built — PaulouPipeline orchestration entry point
+    ├── backend/                 # not yet built — FastAPI app, DB models/repository, background jobs
+    ├── frontend/                # not yet built — client app (TBD)
+    ├── tests/
+    │   ├── unit/                # implemented — fast, pure functions + G2P dict lookup
+    │   ├── model/               # implemented — slow, loads the real spaCy model
+    │   ├── contract/            # implemented — calls the real Gemini API, needs GEMINI_API_KEY
+    │   ├── fixtures/            # implemented — g2p_golden.tsv (fixture lexicon)
+    │   ├── api/                 # not yet built (no backend yet)
+    │   └── db/                  # not yet built (no backend yet)
+    └── experiments/             # not yet built — implementation comparisons, diagnostic sets, review notebooks
 ```
 
 ---

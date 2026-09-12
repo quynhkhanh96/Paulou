@@ -47,13 +47,13 @@ Chunk {
 
 PronunciationUnit {
     id: str
-    type: Literal["single", "liaison_group"]
-    words: list[str]              # 1 word if single, 2+ if liaison_group
+    type: Literal["single", "liaison_group", "elision_group"]
+    words: list[str]              # 1 word if single, 2+ if liaison_group or elision_group
     ipa: str
     syllables: list[str]
-    liaison_consonant: str | None # only set for liaison_group (e.g. "z", "t", "n")
+    liaison_consonant: str | None # only set for liaison_group (e.g. "z", "t", "n") — None for elision_group (no consonant added, see 2c-bis)
     note: str                     # human-readable pedagogical note
-    scoring_focus: Literal["phoneme_accuracy", "liaison_presence_and_continuity"]
+    scoring_focus: Literal["phoneme_accuracy", "liaison_presence_and_continuity", "elision_correctness"]
 }
 
 WordTiming {
@@ -140,10 +140,18 @@ Attempt {
 - **Liaison consonant mapping:** s/x/z → /z/, t/d → /t/, n → /n/, r → /ʁ/ (rare), p → /p/ (rare), f → /v/ (rare, irregular)
 - **Known limitation:** rule-based approach is expected to be incomplete on unconstrained free-form input (see D4 in decision log)
 
+**2c-bis. Elision detection** (added post-MVP-scoping, not in the original stage list — see Decision Log D28)
+- **Input:** a single word
+- **Output:** `list[str] | None` — the elided form's phoneme(s) if recognized, else `None`
+- **Nature:** pure, deterministic closed-list lookup — no rule engine, no interface/registry (see D12, D28)
+- **What it covers:** the small closed set of French clitics that drop their final vowel before a vowel-initial word, marked orthographically with an apostrophe: le/la/de/je/me/te/se/ne/que/ce → l'/d'/j'/m'/t'/s'/n'/qu'/c'.
+- **Distinct from liaison:** no consonant is added (elision only removes a vowel); it's not a "decision" the way `LiaisonDecision` is — seeing the elided orthographic form in the tokenized text is itself proof the fusion already happened. Confirmed to never conflict with liaison on the same word (elided words have no liaison-capable final consonant).
+- **Distinct from enchaînement:** enchaînement (see Glossary) is NOT modeled — it requires knowing whether a word's final consonant is already pronounced, which needs G2P output rather than orthography/POS alone, unlike elision and liaison (both decidable pre-G2P). Deferred.
+
 **2d. Unit assembly**
 - **Input:** words with phonemes + `list[LiaisonDecision]`
 - **Output:** `list[PronunciationUnit]`
-- **Nature:** pure — sequential grouping logic. Walks adjacent word pairs; where a liaison decision applies, merges into a `liaison_group` (recomputing combined IPA with the liaison consonant inserted, setting `scoring_focus="liaison_presence_and_continuity"`); otherwise the word stands alone as `single` (`scoring_focus="phoneme_accuracy"`).
+- **Nature:** pure — sequential grouping logic. At each word, checks elision first (2c-bis) — if the word is a recognized elided clitic, merges it with the next word into an `elision_group`, regardless of any liaison decision at that position (an elided word never has a usable liaison consonant, so this never actually overrides a real liaison merge — see Decision Log D28). Otherwise, where a liaison decision applies, merges into a `liaison_group` (recomputing combined IPA with the liaison consonant inserted, setting `scoring_focus="liaison_presence_and_continuity"`); otherwise the word stands alone as `single` (`scoring_focus="phoneme_accuracy"`).
 - **Why separate from 2c:** the rule engine answers a linguistic question ("is there liaison here"); the assembler answers a data-structuring question (grouping, combined IPA, scoring_focus assignment). Testing each independently: rule engine tested with linguistic cases, assembler tested by feeding synthetic `LiaisonDecision`s and asserting structure, without needing the real rules.
 
 ### 3. TTS
@@ -244,15 +252,20 @@ paulou/
     config.py              # PipelineConfig — selects active implementation per stage
   stages/
     parsing/
-      llm_parser.py         # ClaudeSentenceParser implements SentenceParser
-    g2p/
-      lexique_espeak.py     # LexiqueEspeakG2P implements G2PProvider
-    pos/
-      spacy_tagger.py
-    liaison/
-      rule_engine.py        # pure function, no registry
-    assembly/
-      unit_assembler.py     # pure function, no registry
+      gemini_parser.py      # GeminiSentenceParser implements SentenceParser (Decision Log D27)
+    chunk_analyzer/         # stage 2's sub-modules, nested here (Decision Log D29) —
+                             # was previously flat under stages/, inconsistent with
+                             # how speech_assessment/ nests its own sub-modules
+      g2p/
+        lexique_espeak.py    # LexiqueEspeakG2P implements G2PProvider
+      pos/
+        spacy_tagger.py
+      liaison/
+        rule_engine.py        # pure function, no registry
+      elision/
+        elision.py             # pure function, no registry (stage 2c-bis, Decision Log D28)
+      assembly/
+        unit_assembler.py     # pure function, no registry
     tts/
       azure_tts.py           # implements TTSProvider
     speech_assessment/
@@ -310,7 +323,7 @@ class KaldiGOPScorer:
 # core/config.py
 @dataclass
 class PipelineConfig:
-    parser: str = "claude_llm"
+    parser: str = "gemini"
     g2p: str = "lexique_espeak"
     tts: str = "azure_neural"
     gop_scorer: str = "kaldi"

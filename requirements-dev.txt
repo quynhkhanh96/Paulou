@@ -4,12 +4,12 @@
 # NOT a pip dependency — install separately as a system package:
 #   apt install espeak-ng        # Debian/Ubuntu
 #   brew install espeak-ng       # macOS
-# Used as the eSpeak-ng fallback in paulou/stages/g2p/lexique_espeak.py.
+# Used as the eSpeak-ng fallback in paulou/stages/chunk_analyzer/g2p/lexique_espeak.py.
 # Tests that need it are skipped automatically if it's missing.
 
 pytest>=8
 
-# POS tagging (paulou/stages/pos/spacy_tagger.py) — plain function, no
+# POS tagging (paulou/stages/chunk_analyzer/pos/spacy_tagger.py) — plain function, no
 # Protocol/registry (Decision Log D26).
 spacy>=3.8
 

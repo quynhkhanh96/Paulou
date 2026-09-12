@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from stages.g2p.lexique_espeak import LexiqueEspeakG2P, _load_lexicon, _parse_espeak_ipa
+from stages.chunk_analyzer.g2p.lexique_espeak import LexiqueEspeakG2P, _load_lexicon, _parse_espeak_ipa
 
 FIXTURE_LEXICON = Path(__file__).parent.parent / "fixtures" / "g2p_golden.tsv"
 

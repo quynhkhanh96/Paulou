@@ -13,7 +13,7 @@ and the free-phone recognizer exist — see the note at the bottom.
   tested against Python 3.12.3 — anything 3.10+ should work, but 3.10/3.11
   haven't been explicitly verified yet.
 - **`espeak-ng`** — a system package, NOT a pip dependency. Used as the G2P
-  fallback in `paulou/stages/g2p/lexique_espeak.py`. Install via your OS
+  fallback in `paulou/stages/chunk_analyzer/g2p/lexique_espeak.py`. Install via your OS
   package manager:
   ```bash
   apt install espeak-ng        # Debian/Ubuntu
@@ -85,7 +85,7 @@ and the free-phone recognizer exist — see the note at the bottom.
    pytest tests/model -v -m model    # slow suite — loads the real spaCy model
    pytest tests/contract -v          # calls the real Gemini API, needs GEMINI_API_KEY
    ```
-   All 58 tests should pass (46 fast + 7 model + 5 contract) if
+   All 68 tests should pass (56 fast + 7 model + 5 contract) if
    `espeak-ng`, the spaCy model, and `GEMINI_API_KEY` are all set up. If
    any is missing, the tests that need it are skipped, not failed — except
    the contract tests will genuinely fail (not skip) if `GEMINI_API_KEY`

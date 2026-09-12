@@ -42,7 +42,7 @@ built (build order step 3+ still in progress).
 ## `test_liaison_rules.py`
 
 Tests `apply_liaison_rules` and `get_liaison_consonant` in
-`stages/liaison/rule_engine.py`.
+`stages/chunk_analyzer/liaison/rule_engine.py`.
 
 | Test | Purpose | Expected outcome |
 |---|---|---|
@@ -63,7 +63,7 @@ Tests `apply_liaison_rules` and `get_liaison_consonant` in
 
 ## `test_unit_assembler.py`
 
-Tests `assemble_units` in `stages/assembly/unit_assembler.py`, using
+Tests `assemble_units` in `stages/chunk_analyzer/assembly/unit_assembler.py`, using
 synthetic `LiaisonDecision`s (per Testing Conventions — the assembler is
 tested without needing the real rule engine).
 
@@ -76,6 +76,27 @@ tested without needing the real rule engine).
 | `test_single_word_input_with_no_decisions` | Degenerate case: one word, no decisions to process. | 1 `single` unit, no exception. |
 | `test_unit_ids_are_sequential` | Verify the deterministic id scheme. | `ids == ["unit_0", "unit_1", "unit_2"]`. |
 | `test_raises_on_mismatched_decision_count` | Guard against a real integration bug: decision count must match `len(words) - 1`. | Raises `ValueError`. |
+| `test_elision_group_formed` | Verify basic elision fusion (added after the original design — see `elision.py`): an elided clitic ("l'") merges with the next word into its own unit type. | 1 `elision_group` unit; `words=["l'","ami"]`; `ipa="lami"`; `liaison_consonant=None`; `scoring_focus="elision_correctness"`. |
+| `test_elision_overrides_possibly_wrong_g2p_phonemes` | Verify a real practical benefit: even if G2P produced the wrong phonemes for "l'" (per the confirmed eSpeak-ng bug — isolated "l'" mispronounced as the letter name "elle"), `assemble_units` ignores that and substitutes the correct closed-list phoneme. | `ipa == "lami"`, NOT `"ɛlami"`, even when the input phonemes for "l'" are the wrong `["ɛ","l"]`. |
+| `test_elision_takes_priority_over_liaison_decision_at_same_position` | Defensively lock in the documented priority order: elision is checked before liaison at each position, using a synthetic (unrealistic) `LiaisonDecision` to prove it's ignored. | Result is still `elision_group`, `liaison_consonant=None` — the synthetic liaison decision has no effect. |
+| `test_mixed_elision_single_and_liaison_group` | Verify elision and liaison grouping compose correctly in one 4-word sequence ("j'ai un ami"). | 2 units: `elision_group` (`["j'","ai"]`), then `liaison_group` (`["un","ami"]`, consonant `"n"`). |
+| `test_elision_as_last_word_raises` | Guard against malformed input: an elided clitic with no following word to fuse with. | Raises `ValueError`. |
+
+---
+
+## `test_elision.py`
+
+Tests `detect_elision` in `stages/chunk_analyzer/elision/elision.py` — a small closed-list
+lookup, distinct from liaison and enchaînement (see that module's
+docstring and the Glossary's "Elision" entry).
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_recognized_clitics` | Verify all 9 closed-list elided forms map to their correct phoneme. | `"l'"→["l"]`, `"d'"→["d"]`, `"j'"→["ʒ"]`, `"m'"→["m"]`, `"n'"→["n"]`, `"qu'"→["k"]`, `"s'"→["s"]`, `"t'"→["t"]`, `"c'"→["s"]`. |
+| `test_case_insensitive` | Verify lookup normalizes case. | `"L'"→["l"]`, `"Qu'"→["k"]`. |
+| `test_ordinary_word_returns_none` | Verify non-elided words (including the un-elided base form "le") don't match. | `None` for `"amis"` and `"le"`. |
+| `test_word_kept_whole_by_tokenizer_returns_none` | Verify a word that happens to contain an apostrophe but isn't an elided clitic ("aujourd'hui", confirmed NOT split by spaCy's tokenizer) doesn't false-positive. | `None`. |
+| `test_typographic_apostrophe_does_not_match` | Verify only the straight ASCII apostrophe (U+0027) is recognized, matching what spaCy's tokenizer actually produces — not the typographic U+2019. | `None` for `"l’"` (U+2019). |
 
 ---
 
@@ -119,7 +140,7 @@ MVP-scoped to `single` units only (Decision Log D19).
 ## `test_g2p.py`
 
 Tests `LexiqueEspeakG2P`, `_load_lexicon`, and `_parse_espeak_ipa` in
-`stages/g2p/lexique_espeak.py`. Uses the fixture lexicon
+`stages/chunk_analyzer/g2p/lexique_espeak.py`. Uses the fixture lexicon
 `tests/fixtures/g2p_golden.tsv` (a small hand-picked dictionary, NOT the
 real Lexique383 database — see that module's docstring). Tests calling the
 real `espeak-ng` binary are marked and skipped if it isn't installed.
@@ -142,7 +163,7 @@ real `espeak-ng` binary are marked and skipped if it isn't installed.
 
 ## `test_pos_tagger.py` (`tests/model/`)
 
-Tests `tag_sentence` in `stages/pos/spacy_tagger.py`. Requires the real
+Tests `tag_sentence` in `stages/chunk_analyzer/pos/spacy_tagger.py`. Requires the real
 `fr_core_news_sm` spaCy model to be installed — skipped automatically
 otherwise. Marked `pytest.mark.model` (Category 3 — loads a real trained
 model).
@@ -166,6 +187,11 @@ the real Gemini API — requires `GEMINI_API_KEY` (repo-root `.env`),
 skipped automatically otherwise. Per Testing Conventions, chunking is
 stochastic (LLM-based), so these check invariants that must always hold —
 NOT exact expected chunk boundaries.
+
+**Not run/verified by the assistant that wrote this code** — no network
+access to the Gemini API from that environment. Run this yourself once
+`GEMINI_API_KEY` is set; if it fails on `interaction.output_text`, see the
+alternative noted in `gemini_parser.py`'s docstring.
 
 | Test | Purpose | Expected outcome |
 |---|---|---|
