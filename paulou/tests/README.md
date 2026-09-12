@@ -13,7 +13,6 @@ pytest tests/model -v -m model        # slow suite — loads the real spaCy mode
 pytest tests/contract -v              # calls the real Gemini API — needs GEMINI_API_KEY
 pytest tests/ -v                      # everything
 ```
-
 `tests/unit/` holds Category 1 (pure functions, ordinary `pytest`
 assertions) per the Testing Conventions note, plus `test_g2p.py`'s
 dictionary-lookup tests (deterministic, no model loading). A few tests in
@@ -177,6 +176,27 @@ model).
 | `test_facultative_example_sentence` | Verify correct tagging of the facultative liaison example ("pas encore"). | `[("pas","ADV"), ("encore","ADV")]`. |
 | `test_subject_noun_verb_requires_full_sentence_context` | Documents an empirically verified gotcha: the same words tagged as an isolated 2-word fragment vs. embedded in a real sentence give different results — tagging must always be done on the full sentence, never on fragments assembled elsewhere. | Fragment `"enfant arrive"` mistags "arrive" as `ADJ`; full sentence `"Mon enfant arrive demain."` correctly tags it `VERB`. |
 | `test_known_limitation_content_mistagged_as_adverb` | Regression-locking test for a known model limitation: "content" (adjective) is reproducibly mistagged as `ADV` even in a full, correct sentence, which would cause the rule engine's "très/trop + ADJ" obligatoire pattern to miss real liaison on this word. If this test ever fails, that means the model improved — update the docstring/decision log note when it does. | `"Il est trop content de venir."` tags "content" as `ADV`. |
+
+---
+
+## `test_chunk_analyzer.py` (`tests/model/`)
+
+Tests `analyze_chunk` in `stages/chunk_analyzer/chunk_analyzer.py` — the
+orchestration function composing POS tagging, liaison rules, G2P, and unit
+assembly (Architecture Spec, stage 2). Requires the real `fr_core_news_sm`
+model (via `tag_sentence`) — skipped automatically otherwise. Uses a
+deterministic `_StubG2P` (defined in the test file) instead of the real
+`LexiqueEspeakG2P`, to isolate this orchestration logic from real G2P
+behavior — G2P's own quirks (including the confirmed eSpeak-ng elision bug)
+are already covered separately in `test_g2p.py` and `test_unit_assembler.py`.
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_les_amis_arrivent_demain` | The worked example from the original chunk-analyzer design discussion — verifies the full pipeline end-to-end matches the manually-derived expected grouping. | 3 units: `liaison_group` (`["les","amis"]`, consonant `"z"`), `single` (`["arrivent"]`), `single` (`["demain"]`). |
+| `test_elision_end_to_end` | Verify elision fusion works through the full orchestration, including that `assemble_units` still overrides the stub's deliberately-wrong phonemes for "l'" (mirroring the real eSpeak-ng bug). | 2 units: `elision_group` (`["l'","ami"]`, `ipa="lami"` — not `"ɛlami"`), `single` (`["arrive"]`). |
+| `test_punctuation_is_filtered_out` | Verify PUNCT tokens (e.g. a comma) never produce a bogus unit or appear in any unit's `words`. | No unit contains `","`. |
+| `test_empty_chunk_returns_empty_list` | Verify the empty-input edge case doesn't crash. | `analyze_chunk("", g2p) == []`. |
+| `test_single_word_chunk` | Verify the degenerate one-word-chunk case (no adjacent pairs to evaluate). | 1 `single` unit. |
 
 ---
 
