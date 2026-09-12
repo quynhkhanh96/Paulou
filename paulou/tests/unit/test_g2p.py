@@ -89,3 +89,50 @@ def test_espeak_fallback_never_raises_for_unknown_word():
     phonemes, source = g2p.phonemize("anticonstitutionnellement")
     assert source == "espeak"
     assert len(phonemes) > 0
+
+
+# --- Real Lexique400 database (Decision Log D30) ---------------------------
+# 33MB, not committed to the repo (.gitignore) — skipped automatically if
+# the file isn't present at the expected path. Download separately.
+
+LEXIQUE400_PATH = Path(__file__).parent.parent.parent / "data" / "Lexique400.tsv"
+
+lexique400_available = pytest.mark.skipif(
+    not LEXIQUE400_PATH.exists(),
+    reason="Lexique400.tsv not present (git-ignored, download separately — see SETUP.md)",
+)
+
+
+@lexique400_available
+def test_from_lexique400_loads_known_words():
+    g2p = LexiqueEspeakG2P.from_lexique400(LEXIQUE400_PATH)
+    phonemes, source = g2p.phonemize("bonjour")
+    assert phonemes == ["b", "ɔ̃", "ʒ", "u", "ʁ"]
+    assert source == "dict"
+
+
+@lexique400_available
+def test_from_lexique400_nasal_vowel_is_one_phoneme():
+    # Verifies the combining-mark segmentation: "ɔ̃" (base + combining
+    # tilde) must be ONE phoneme, not two.
+    g2p = LexiqueEspeakG2P.from_lexique400(LEXIQUE400_PATH)
+    phonemes, _ = g2p.phonemize("avons")
+    assert phonemes == ["a", "v", "ɔ̃"]
+    assert len(phonemes[-1]) == 2  # base char + combining tilde, one phoneme
+
+
+@lexique400_available
+def test_from_lexique400_has_substantial_coverage():
+    g2p = LexiqueEspeakG2P.from_lexique400(LEXIQUE400_PATH)
+    assert len(g2p._lexicon) > 100_000
+
+
+@lexique400_available
+def test_from_lexique400_elided_clitics_are_real_dictionary_entries():
+    # If Lexique400 has its own entries for elided forms, dict lookup
+    # returns them directly — the eSpeak fallback (confirmed to mishandle
+    # "l'" as the letter name "elle", see elision.py) is never reached.
+    g2p = LexiqueEspeakG2P.from_lexique400(LEXIQUE400_PATH)
+    phonemes, source = g2p.phonemize("l'")
+    assert source == "dict"
+    assert phonemes == ["l"]

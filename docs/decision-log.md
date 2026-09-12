@@ -119,6 +119,14 @@ Chronological record of major design/architecture decisions, why they were made,
 **Tradeoff accepted:** `min_sample_size=30` is a guess (common statistical rule-of-thumb), not derived from anything specific to phone-level GOP distributions. Must be revisited once the actual corpus run produces real per-phone sample sizes.
 **Status:** Locked in for MVP structure; the threshold value itself is not locked in and should be revisited.
 
+### D30 — G2P dictionary wired to Lexique400, not Lexique383
+**Decision:** `LexiqueEspeakG2P.from_lexique400()` loads the real Lexique400 database (lexique.org), not Lexique383 as the Architecture Spec originally named. Uses columns `1_Mot` (word) and `3_Phono_IPA` (IPA transcription).
+**Rationale:** Lexique400 is more up-to-date (a "major upgrade" per its 2026 publication). It also provides real IPA directly, unlike Lexique383's ASCII phonetic code, simplifying integration.
+**Implementation note:** IPA phoneme segmentation (grouping base character + Unicode combining marks, e.g. nasal tilde, into one phoneme) was empirically verified against Lexique400's own ASCII phonetic column across all 189,863 rows — 0 mismatches.
+**Known limitation:** ~719 words (0.4%) have more than one distinct pronunciation in the file (minor phonetic variants, not true heteronyms in sampled cases); loader keeps whichever appears last, no disambiguation attempted.
+**Not committed to the repo:** the 33MB file is git-ignored, expected at `paulou/data/Lexique400.tsv`, downloaded separately.
+**Status:** Locked in.
+
 ### D19 — MVP scope excludes Branch 2 (free phone recognition / insertion-deletion detection)
 **Decision:** MVP ships with only Branch 1 (GOP forced-align scoring). `liaison_group` units remain fully present in the UI (IPA, pedagogical notes, TTS sample, recording) but do not get a trustworthy automated score for "was the liaison sound present/absent" — either no auto-score is shown for that specific error type, or raw GOP is shown with an explicit low-confidence caveat.
 **Rationale:** Forced-align GOP is structurally near-blind to insertion/deletion (see D9) — shipping it as the sole scorer for `liaison_group` units would mean confidently displaying feedback ("missing liaison /z/") that isn't actually reliable, for precisely the error type Paulou's liaison modeling (D3) exists to catch. Rather than fake reliability, MVP scopes the automated scoring down to what Branch 1 can honestly support (`single` units, `phoneme_accuracy`), while keeping the liaison teaching/UI content intact.
@@ -145,6 +153,18 @@ Chronological record of major design/architecture decisions, why they were made,
 ### D12 — Protocol interfaces + registry for swappable, model-backed stages; plain functions for deterministic logic
 **Decision:** Every stage with an external/model dependency likely to be swapped or compared (sentence parser, G2P source, TTS provider, GOP scorer, free-phone recognizer) is defined as a `typing.Protocol` and resolved via a small registry + config, so implementations can be swapped by changing one config value. Pure, deterministic logic (liaison rules, unit assembly, alignment, merge, calibration, feedback templating) stays as plain functions — no interface/registry layer.
 **Rationale:** The stages likely to need experimentation (e.g. Kaldi GOP vs. `gop-ft`) benefit from being swappable without touching pipeline code or other stages' tests. Applying the same abstraction to pure functions would be over-engineering — there's no real expectation of swapping the liaison rule algorithm itself.
+**Status:** Locked in.
+
+### D28 — Elision modeled as a third PronunciationUnit type, distinct from liaison
+**Decision:** Introduced `PronunciationUnit.type = "elision_group"` and `scoring_focus = "elision_correctness"`, with detection in a new `stages/chunk_analyzer/elision/elision.py` (closed-list lookup, no rule engine needed). `assemble_units` checks elision before liaison at each position — no new parameter needed, since elision detection depends only on the word's own spelling.
+**Rationale:** Elision (le/la/de/je/me/te/se/ne/que/ce → l'/d'/j'/m'/t'/s'/n'/qu'/c') is linguistically distinct from liaison — no consonant is added, it's a closed list rather than a POS pattern, and it's not a "decision" (seeing the elided orthographic form is itself proof it already happened). Confirmed empirically to never conflict with liaison at the same word (elided words have no liaison-capable final consonant).
+**Explicitly NOT modeled:** enchaînement (already noted as deferred in the Glossary) — unlike elision, it requires knowing whether a word's final consonant is already pronounced, which needs G2P output rather than orthography/POS alone, and would require reordering the pipeline (G2P before the junction decision).
+**Status:** Locked in.
+
+### D29 — Chunk Analyzer sub-stages nested under stages/chunk_analyzer/, not flat under stages/
+**Decision:** `g2p/`, `pos/`, `liaison/`, `elision/`, `assembly/` moved from flat siblings under `stages/` to nested children of a new `stages/chunk_analyzer/` folder.
+**Rationale:** The Architecture Spec's own codebase structure was internally inconsistent — `speech_assessment/` (also a composite, multi-sub-module stage) already nests its sub-modules (`gop/`, `free_decode/`), but the Chunk Analyzer's sub-modules were flat, ranked alongside top-level stages like `parsing/` and `tts/`. Nesting makes the four top-level pipeline stages (Sentence Parser, Chunk Analyzer, TTS, Speech Assessment) visible directly in `stages/`'s folder listing, matching the Architecture Spec's own pipeline overview.
+**Note:** `tests/` directory structure is unaffected — test files mirror module names, not directory nesting (Codebase Conventions), so only import statements inside test files changed, not test file locations.
 **Status:** Locked in.
 
 ### D26 — POS tagging implemented as a plain class, not via Protocol/registry

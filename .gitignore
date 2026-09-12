@@ -83,3 +83,6 @@ paulou/backend/db/migrations/versions/__pycache__/
 
 # --- OS junk ---
 Thumbs.db
+
+# --- Data dependencies ---
+paulou/data/*.tsv
