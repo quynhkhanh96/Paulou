@@ -167,10 +167,19 @@ class LexiqueEspeakG2P:
 
     @staticmethod
     def _phonemize_with_espeak(word: str) -> list[str]:
-        result = subprocess.run(
-            ["espeak-ng", "-v", "fr", "--ipa=1", "-q", word],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        try:
+            result = subprocess.run(
+                ["espeak-ng", "-v", "fr", "--ipa=1", "-q", word],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                "espeak-ng executable not found on PATH. It's a system "
+                "package, not a pip dependency — see SETUP.md. On Windows: "
+                "download an installer from "
+                "https://github.com/espeak-ng/espeak-ng/releases and make "
+                "sure the folder containing espeak-ng.exe is added to PATH."
+            ) from exc
         return _parse_espeak_ipa(result.stdout)

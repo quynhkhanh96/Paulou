@@ -91,6 +91,24 @@ def test_espeak_fallback_never_raises_for_unknown_word():
     assert len(phonemes) > 0
 
 
+def test_espeak_not_found_gives_actionable_error(monkeypatch):
+    # Confirmed real failure mode: on a machine without espeak-ng on PATH
+    # (e.g. a fresh Windows install), subprocess.run raised a bare
+    # FileNotFoundError ("[WinError 2] The system cannot find the file
+    # specified") with no indication of what was actually missing. This
+    # locks in the fix: a clear, actionable RuntimeError instead.
+    import subprocess as subprocess_module
+
+    def _raise_not_found(*args, **kwargs):
+        raise FileNotFoundError()
+
+    monkeypatch.setattr(subprocess_module, "run", _raise_not_found)
+
+    g2p = LexiqueEspeakG2P(FIXTURE_LEXICON)
+    with pytest.raises(RuntimeError, match="espeak-ng executable not found"):
+        g2p.phonemize("xylophone")
+
+
 # --- Real Lexique400 database (Decision Log D30) ---------------------------
 # 33MB, not committed to the repo (.gitignore) — skipped automatically if
 # the file isn't present at the expected path. Download separately.

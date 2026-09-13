@@ -19,6 +19,12 @@ and the free-phone recognizer exist — see the note at the bottom.
   apt install espeak-ng        # Debian/Ubuntu
   brew install espeak-ng       # macOS
   ```
+  **Windows:** download an installer from
+  [github.com/espeak-ng/espeak-ng/releases](https://github.com/espeak-ng/espeak-ng/releases)
+  and make sure the folder containing `espeak-ng.exe` is added to your PATH
+  — confirmed via real testing that a missing/misconfigured PATH here
+  originally surfaced as a cryptic `[WinError 2] The system cannot find the
+  file specified`; this now raises a clear `RuntimeError` instead.
   Not required just to get the repo running — tests that need it are
   skipped automatically if it's missing (see `paulou/tests/README.md`).
 - **A Gemini API key.** Used by the sentence parser
@@ -85,7 +91,7 @@ and the free-phone recognizer exist — see the note at the bottom.
    pytest tests/model -v -m model    # slow suite — loads the real spaCy model
    pytest tests/contract -v          # calls the real Gemini API, needs GEMINI_API_KEY
    ```
-   All 68 tests should pass (56 fast + 7 model + 5 contract) if
+   All 78 tests should pass (61 fast + 12 model + 5 contract) if
    `espeak-ng`, the spaCy model, and `GEMINI_API_KEY` are all set up. If
    any is missing, the tests that need it are skipped, not failed — except
    the contract tests will genuinely fail (not skip) if `GEMINI_API_KEY`

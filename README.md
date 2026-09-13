@@ -44,7 +44,7 @@ User input (sentence)
 | Stage | Folder | What it does |
 |---|---|---|
 | Sentence parsing | [`stages/parsing/`](stages/parsing/) | LLM-based chunking into rhythmic groups (Gemini API, Decision Log D27) |
-| G2P | [`stages/chunk_analyzer/g2p/`](stages/chunk_analyzer/g2p/) | Word → phonemes (Lexique383 + eSpeak-ng fallback) |
+| G2P | [`stages/chunk_analyzer/g2p/`](stages/chunk_analyzer/g2p/) | Word → phonemes (Lexique400 + eSpeak-ng fallback, Decision Log D30) |
 | POS tagging | [`stages/chunk_analyzer/pos/`](stages/chunk_analyzer/pos/) | Needed to apply liaison rules correctly |
 | Liaison rules | [`stages/chunk_analyzer/liaison/`](stages/chunk_analyzer/liaison/) | Obligatoire / interdite / facultative rule engine |
 | Elision detection | [`stages/chunk_analyzer/elision/`](stages/chunk_analyzer/elision/) | Closed-list lookup for elided clitics (l', d', j', ...) — distinct from liaison, Decision Log D28 |
@@ -79,13 +79,13 @@ The core pipeline (`core/`, `stages/`, `pipeline.py`) is plain Python with no de
 
 **Implemented so far:**
 - **Pure functions** (step 1): liaison rule engine (`stages/chunk_analyzer/liaison/rule_engine.py`), elision detection (`stages/chunk_analyzer/elision/elision.py`, Decision Log D28), unit assembly (`stages/chunk_analyzer/assembly/unit_assembler.py`), calibration (`stages/speech_assessment/calibration.py`), feedback templating (`stages/speech_assessment/feedback.py` — scoped to `single` units for MVP, see Decision Log D19).
-- **G2P + POS tagging** (step 2): `stages/chunk_analyzer/g2p/lexique_espeak.py` (Lexique383 lookup + eSpeak-ng fallback) and `stages/chunk_analyzer/pos/spacy_tagger.py` (spaCy `fr_core_news_sm`).
+- **G2P + POS tagging** (step 2): `stages/chunk_analyzer/g2p/lexique_espeak.py` (Lexique400 lookup, Decision Log D30, + eSpeak-ng fallback) and `stages/chunk_analyzer/pos/spacy_tagger.py` (spaCy `fr_core_news_sm`).
 - **Sentence parser** (step 3, partial — TTS still pending): `stages/parsing/gemini_parser.py` (Gemini API, Decision Log D27).
 - Core data models added incrementally as each stage needs them (`core/models.py`): `LiaisonDecision`, `PronunciationUnit`, `PhoneScore`, `UnitResult`. `Sentence`, `Chunk`, `Attempt` not needed yet.
-- 68 tests passing (56 fast unit tests, 7 model tests requiring the real spaCy model, 5 contract tests requiring a real Gemini API key) — see `tests/README.md`.
+- 78 tests passing (61 fast unit tests, 12 model tests requiring the real spaCy model, 5 contract tests requiring a real Gemini API key) — see `tests/README.md`.
 
 **Known data/tooling gaps, not yet resolved:**
-- The real Lexique383 database isn't wired in yet — G2P currently reads from a small hand-written fixture dictionary. Whoever wires in the real corpus will need to adapt the lexicon loader to its actual column format.
+- The real Lexique400 database (Decision Log D30 — not Lexique383 as originally named) is wired in via `LexiqueEspeakG2P.from_lexique400()`, but nothing in the codebase calls it by default yet — `pipeline.py` doesn't exist yet to wire it in as the production default, so the plain constructor still loads the small hand-written test fixture. The 33MB file itself isn't committed to the repo (git-ignored), so it must be downloaded separately — see SETUP.md.
 - The native-French-corpus GOP calibration statistics (Decision Log D11) haven't been produced yet — `calibrate_score` takes the stats table as a parameter rather than embedding real numbers.
 
 **Next up (rest of build order step 3):** TTS.
@@ -141,37 +141,37 @@ Qualitative review notebooks (chunking quality, audio playback, GOP alignment vi
 ## Repo structure
 
 ```
-Paulou/                        # repo root
+Paulou/                                   # repo root
 ├── docs/
 │   └── assets/
-├── README.md                    # this file
-├── SETUP.md                     # local dev setup (venv, dependencies, running tests)
-├── requirements-dev.txt
-├── .env.example                 # GEMINI_API_KEY — copy to .env at this same level
+├── .env.example                          # GEMINI_API_KEY — copy to .env at this same level
 ├── .gitignore
-└── paulou/                      # the actual Python package
-    ├── core/                    # data models, interfaces (Protocol), registry — built incrementally as stages need them
-    ├── stages/                  # one subfolder per pipeline stage, swappable implementations
-    │   ├── parsing/             # implemented — Gemini API sentence parser (Decision Log D27)
-    │   ├── chunk_analyzer/      # stage 2's sub-modules, nested here (Decision Log D29)
-    │   │   ├── liaison/         # implemented — rule engine
-    │   │   ├── elision/         # implemented — closed-list clitic detection (Decision Log D28)
-    │   │   ├── assembly/        # implemented — unit assembly
-    │   │   ├── g2p/             # implemented — fixture lexicon + eSpeak-ng fallback (real Lexique383 not wired in yet)
-    │   │   └── pos/             # implemented — spaCy fr_core_news_sm
-    │   ├── speech_assessment/   # implemented — calibration, feedback (single units only for MVP, D19)
-    │   └── tts/                 # not yet built (rest of build order step 3)
-    ├── pipeline.py              # not yet built — PaulouPipeline orchestration entry point
-    ├── backend/                 # not yet built — FastAPI app, DB models/repository, background jobs
-    ├── frontend/                # not yet built — client app (TBD)
+├── README.md                             # this file
+├── requirements-dev.txt
+├── SETUP.md                              # local dev setup (venv, dependencies, running tests)
+└── paulou/                               # the actual Python package
+    ├── core/                             # data models, interfaces (Protocol), registry — built incrementally as stages need them
+    ├── stages/                           # one subfolder per pipeline stage, swappable implementations
+    │   ├── parsing/                      # implemented — Gemini API sentence parser (Decision Log D27)
+    │   ├── chunk_analyzer/               # stage 2's sub-modules, nested here (Decision Log D29)
+    │   │   ├── liaison/                  # implemented — rule engine
+    │   │   ├── elision/                  # implemented — closed-list clitic detection (Decision Log D28)
+    │   │   ├── assembly/                 # implemented — unit assembly
+    │   │   ├── g2p/                      # implemented — Lexique400 lookup (D30) + eSpeak-ng fallback; test fixture used by default, real DB via from_lexique400() (not committed, .gitignore)
+    │   │   └── pos/                      # implemented — spaCy fr_core_news_sm
+    │   ├── speech_assessment/            # implemented — calibration, feedback (single units only for MVP, D19)
+    │   └── tts/                          # not yet built (rest of build order step 3)
+    ├── pipeline.py                       # not yet built — PaulouPipeline orchestration entry point
+    ├── backend/                          # not yet built — FastAPI app, DB models/repository, background jobs
+    ├── frontend/                         # not yet built — client app (TBD)
     ├── tests/
-    │   ├── unit/                # implemented — fast, pure functions + G2P dict lookup
-    │   ├── model/               # implemented — slow, loads the real spaCy model
-    │   ├── contract/            # implemented — calls the real Gemini API, needs GEMINI_API_KEY
-    │   ├── fixtures/            # implemented — g2p_golden.tsv (fixture lexicon)
-    │   ├── api/                 # not yet built (no backend yet)
-    │   └── db/                  # not yet built (no backend yet)
-    └── experiments/             # not yet built — implementation comparisons, diagnostic sets, review notebooks
+    │   ├── unit/                         # implemented — fast, pure functions + G2P dict lookup
+    │   ├── model/                        # implemented — slow, loads the real spaCy model
+    │   ├── contract/                     # implemented — calls the real Gemini API, needs GEMINI_API_KEY
+    │   ├── fixtures/                     # implemented — g2p_golden.tsv (fixture lexicon)
+    │   ├── api/                          # not yet built (no backend yet)
+    │   └── db/                           # not yet built (no backend yet)
+    └── experiments/                      # not yet built — implementation comparisons, diagnostic sets, review notebooks
 ```
 
 ---
@@ -190,7 +190,7 @@ This is primarily a personal research and learning project, built alongside a Ph
 
 ## Acknowledgments & references
 
-- [Lexique383](http://www.lexique.org/) — open French phonetic/lexical database
+- [Lexique400](http://www.lexique.org/) — open French phonetic/lexical database (Decision Log D30 — supersedes the originally-planned Lexique383)
 - [eSpeak NG](https://github.com/espeak-ng/espeak-ng) — fallback grapheme-to-phoneme synthesis
 - [fr_kaldi-rhasspy](https://github.com/rhasspy/kaldi-french) — open French Kaldi acoustic model
 - [gop-ft](https://github.com/JazminVidal/gop-ft) — PyTorch reimplementation of Kaldi GOP-DNN
