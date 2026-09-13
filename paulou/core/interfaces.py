@@ -18,6 +18,8 @@ up front (same convention as core/models.py).
 
 from typing import Protocol
 
+from core.models import WordTiming
+
 
 class SentenceParser(Protocol):
     def parse(self, sentence: str) -> list[str]: ...
@@ -25,3 +27,7 @@ class SentenceParser(Protocol):
 
 class G2PProvider(Protocol):
     def phonemize(self, word: str) -> tuple[list[str], str]: ...
+
+
+class TTSProvider(Protocol):
+    def synthesize(self, text: str, rate: float = 1.0) -> tuple[bytes, list[WordTiming]]: ...

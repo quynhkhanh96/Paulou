@@ -29,9 +29,10 @@ isn't installed.
 
 `tests/contract/` holds Category 2 (stochastic modules, checked via
 invariants, not exact output) per the Testing Conventions note. Calls the
-real Gemini API — needs `GEMINI_API_KEY` set (repo-root `.env`, see
-`.env.example`) and costs quota; skipped automatically if the key isn't
-set.
+real Gemini and Azure APIs — needs `GEMINI_API_KEY` and/or
+`AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION` set (repo-root `.env`, see
+`.env.example`) and costs quota; skipped automatically if the relevant
+credential isn't set.
 
 No `tests/api` or `tests/db` directories exist yet — no backend has been
 built (build order step 3+ still in progress).
@@ -222,3 +223,58 @@ alternative noted in `gemini_parser.py`'s docstring.
 |---|---|---|
 | `test_chunking_preserves_all_text` (parametrized, 4 sentences) | Verify no text is lost or added when a sentence is split into chunks, and no chunk is empty — the core invariant any chunking implementation must satisfy regardless of *where* it draws the boundaries. | Chunks are non-empty; whitespace/case-normalized, concatenated chunks equal the original sentence. |
 | `test_chunking_returns_a_list_of_strings` | Verify the structured-output JSON parses into the expected Python shape (`list[str]`), catching a malformed schema response early. | `isinstance(chunks, list)` and every element is a `str`. |
+
+---
+
+## `test_tts_provider_contract.py` (`tests/contract/`)
+
+Tests `AzureTTSProvider` in `stages/tts/azure_tts.py`. Calls the real Azure
+Speech API — requires `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION`
+(repo-root `.env`), skipped automatically otherwise. Per Testing
+Conventions, TTS output can't be exact-match tested (real audio bytes,
+timing jitter), so these check invariants.
+
+**Not run/verified by the assistant that wrote this code** — no network
+access to Azure's endpoints from that environment, and no real
+credentials. The SSML/event-wiring shape was verified structurally against
+the real installed SDK (1.51.2); only the live round-trip is unverified.
+Run this yourself once credentials are set.
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_synthesize_returns_nonempty_audio` | Verify a basic call returns real audio data. | `audio` is non-empty `bytes`. |
+| `test_synthesize_returns_one_timing_per_word_roughly` | Verify the number of word-boundary timings is in the same ballpark as the word count of the input (not necessarily exact — SSML/tokenization quirks). | `abs(len(timings) - word_count) <= 2`. |
+| `test_word_timings_are_in_order_and_non_negative` | Verify timings are well-formed: non-negative, `end_ms >= start_ms`, and in chronological order. | All timings satisfy this; `start_ms` values are sorted. |
+| `test_slower_rate_produces_longer_or_equal_audio` | Verify `rate=0.7` (the D6 slow-playback pass) actually produces slower/longer audio for the same text, as a rough correctness check on the SSML `<prosody rate>` wiring. | `len(slow_audio) >= len(normal_audio)`. |
+
+---
+
+## `test_edge_tts_provider_contract.py` (`tests/contract/`)
+
+Tests `EdgeTTSProvider` in `stages/tts/edge_tts_provider.py` — a second
+TTS implementation alongside Azure (Decision Log D31), using the
+unofficial `edge-tts` library (no API key needed). Same invariants as the
+Azure contract test, since both implement the same `TTSProvider` Protocol.
+
+**Skip mechanism differs from other contract tests**: since no credential
+exists to check for, the whole module is skipped via a fast (3s) raw-socket
+reachability check against `speech.platform.bing.com:443` (edge-tts's
+actual host, read from its own `constants.py`) — deliberately not relying
+on catching an exception from the full synthesis call, which was confirmed
+to hang for 20+ seconds rather than fail cleanly in the sandboxed
+environment this was built in.
+
+**Not run/verified by the assistant that wrote this** — worse, in that
+same sandboxed environment, even the reachability pre-check gave a false
+positive (raw TCP connect succeeded; the actual WebSocket protocol data
+still hung) — likely specific to how that sandbox's network proxy
+intercepts traffic, not necessarily representative of a normal firewall.
+Run this yourself and report back, especially if anything hangs instead of
+completing or skipping quickly.
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_synthesize_returns_nonempty_audio` | Verify a basic call returns real audio data. | `audio` is non-empty `bytes`. |
+| `test_synthesize_returns_one_timing_per_word_roughly` | Verify word-boundary timing count is in the same ballpark as the word count — also implicitly verifies `boundary="WordBoundary"` was passed correctly (the library's default, `"SentenceBoundary"`, would give far fewer entries). | `abs(len(timings) - word_count) <= 2`. |
+| `test_word_timings_are_in_order_and_non_negative` | Verify timings are well-formed and chronological. | All timings satisfy `start_ms >= 0`, `end_ms >= start_ms`; `start_ms` values sorted. |
+| `test_slower_rate_produces_longer_or_equal_audio` | Verify the `float` rate → percentage-string conversion (`rate=0.7` → `"-30%"`) actually produces slower/longer audio. | `len(slow_audio) >= len(normal_audio)`. |

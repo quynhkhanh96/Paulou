@@ -23,6 +23,12 @@ Chronological record of major design/architecture decisions, why they were made,
 **Rationale:** Cost — the Gemini API is significantly cheaper than the Claude API for this stage's usage pattern. Quality has not been compared between the two at this point.
 **Status:** Locked in for now; revisit if quality issues surface once real usage/chunking output can be evaluated (see the unverified round-trip note in `gemini_parser.py`).
 
+### D31 — edge-tts added as a second TTS implementation, alongside Azure
+**Decision:** `stages/tts/edge_tts_provider.py` (`EdgeTTSProvider`, `register("tts", "edge_tts")`) implements TTSProvider using the unofficial `edge-tts` library, registered alongside the existing `AzureTTSProvider` (`register("tts", "azure_neural")`) — both kept, swappable via registry (same spirit as Kaldi vs gop-ft for the GOP scorer).
+**Rationale:** Setup friction with Azure API key/credential provisioning. Quality/reliability not yet compared between the two.
+**Known risk:** edge-tts reverse-engineers Microsoft Edge browser's "Read Aloud" WebSocket protocol — not a published/supported API. No SLA; could break or be blocked at any time without notice. Uses the same underlying neural voices as Azure (Edge's Read Aloud runs on Azure Cognitive Services), so voice names are interchangeable between the two implementations.
+**Status:** Locked in as an available alternative; no default chosen yet (no `PipelineConfig` exists to set one — `pipeline.py` not built).
+
 ---
 
 ## Liaison modeling

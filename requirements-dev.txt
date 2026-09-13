@@ -29,7 +29,11 @@ google-genai>=2.3.0
 # Conventions).
 python-dotenv>=1.0
 
+# TTS (paulou/stages/tts/) — two swappable implementations (Decision Log
+# D12, D31), like Kaldi vs gop-ft for the GOP scorer:
+azure-cognitiveservices-speech>=1.51.0   # azure_tts.py — official SDK, needs Azure credentials
+edge-tts>=7.2.0                          # edge_tts_provider.py — unofficial, no API key (D31)
+
 # Heavier stage-specific dependencies (Kaldi, PyTorch, HuggingFace
-# transformers, Azure SDK) are deferred until those stages are actually
-# built, per Codebase Conventions ("Dependency management") — not bundled
-# in up front.
+# transformers) are deferred until those stages are actually built, per
+# Codebase Conventions ("Dependency management") — not bundled in up front.

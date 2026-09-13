@@ -98,3 +98,16 @@ class UnitResult:
     calibrated_score: int
     phone_scores: list[PhoneScore] | None
     feedback_text: str
+
+
+@dataclass(frozen=True)
+class WordTiming:
+    """Word-boundary timestamp from TTS synthesis.
+
+    See Architecture Spec, Data model section, and Decision Log D5 (why
+    synthesis is sentence-level, sliced afterward via these timestamps).
+    """
+
+    word: str
+    start_ms: int
+    end_ms: int
