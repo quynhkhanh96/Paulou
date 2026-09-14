@@ -30,4 +30,5 @@ class G2PProvider(Protocol):
 
 
 class TTSProvider(Protocol):
+    voice: str
     def synthesize(self, text: str, rate: float = 1.0) -> tuple[bytes, list[WordTiming]]: ...

@@ -59,12 +59,12 @@ class EdgeTTSProvider:
     """
 
     def __init__(self, voice: str = "fr-FR-DeniseNeural"):
-        self._voice = voice
+        self.voice = voice
 
     def synthesize(self, text: str, rate: float = 1.0) -> tuple[bytes, list[WordTiming]]:
         rate_str = f"{(rate - 1.0) * 100:+.0f}%"
         communicate = edge_tts.Communicate(
-            text, self._voice, rate=rate_str, boundary="WordBoundary"
+            text, self.voice, rate=rate_str, boundary="WordBoundary"
         )
 
         audio_chunks: list[bytes] = []

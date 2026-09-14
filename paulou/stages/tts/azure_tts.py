@@ -75,7 +75,7 @@ class AzureTTSProvider:
                 "in the environment."
             )
         self._speech_config = speechsdk.SpeechConfig(subscription=api_key, region=region)
-        self._voice = voice
+        self.voice = voice
 
     def synthesize(self, text: str, rate: float = 1.0) -> tuple[bytes, list[WordTiming]]:
         synthesizer = speechsdk.SpeechSynthesizer(
@@ -105,7 +105,7 @@ class AzureTTSProvider:
     def _build_ssml(self, text: str, rate: float) -> str:
         return (
             '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="fr-FR">'
-            f'<voice name="{self._voice}">'
+            f'<voice name="{self.voice}">'
             f'<prosody rate="{rate}">{escape(text)}</prosody>'
             "</voice>"
             "</speak>"

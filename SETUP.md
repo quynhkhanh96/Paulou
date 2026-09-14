@@ -28,7 +28,18 @@ see the note at the bottom.
   file specified`; this now raises a clear `RuntimeError` instead.
   Not required just to get the repo running — tests that need it are
   skipped automatically if it's missing (see `paulou/tests/README.md`).
-- **A Gemini API key.** Used by the sentence parser
+- **`ffmpeg`** (or `avconv`) — a system package, NOT a pip dependency.
+  Used by `pydub` for audio slicing
+  (`paulou/stages/tts/audio_slicing.py`, Decision Log D5). Install via:
+  ```bash
+  apt install ffmpeg        # Debian/Ubuntu
+  brew install ffmpeg       # macOS
+  ```
+  **Known future risk:** `pydub` depends on the stdlib `audioop` module,
+  which is REMOVED (not just deprecated) in Python 3.13+. Fine on the
+  Python 3.12.3 this was developed against; revisit before upgrading past
+  3.12. Not required just to get the repo running — tests that need it are
+  skipped automatically if it's missing. Used by the sentence parser
   (`paulou/stages/parsing/gemini_parser.py`). Get one at
   [aistudio.google.com/apikey](https://aistudio.google.com/apikey). Also
   not required just to get the repo running — tests that need it are
@@ -97,15 +108,25 @@ see the note at the bottom.
    cd paulou
    pytest tests/unit -v              # fast suite
    pytest tests/model -v -m model    # slow suite — loads the real spaCy model
-   pytest tests/contract -v          # calls the real Gemini + Azure APIs
+   pytest tests/contract -v --ignore=tests/contract/test_edge_tts_provider_contract.py
    ```
-   All 82 tests should pass (73 fast/model + 9 contract) if `espeak-ng`,
-   the spaCy model, `GEMINI_API_KEY`, and `AZURE_SPEECH_KEY`/`REGION` are
-   all set up. If any is missing, the tests that need it are skipped, not
-   failed — except a contract test will genuinely fail (not skip) if its
-   credential is set but invalid/out of quota, since at that point a real
-   API call is attempted. See `paulou/tests/README.md` for what each
-   individual test checks.
+   All 95 tests should pass (74 fast + 12 model + 9 contract) if
+   `espeak-ng`, `ffmpeg`, the spaCy model, `GEMINI_API_KEY`, and
+   `AZURE_SPEECH_KEY`/`REGION` are all set up. If any is missing, the
+   tests that need it are skipped, not failed — except a contract test
+   will genuinely fail (not skip) if its credential is set but
+   invalid/out of quota, since at that point a real API call is
+   attempted. See `paulou/tests/README.md` for what each individual test
+   checks.
+
+   **Run separately, not as part of the above:**
+   `tests/contract/test_edge_tts_provider_contract.py` (4 tests) — no
+   credential needed for edge-tts, so it isn't skipped the same way; it
+   does a fast reachability pre-check instead. On a restrictive
+   network/proxy this can still hang rather than skip cleanly (confirmed
+   in the sandboxed environment this was built in) — run it on its own
+   and kill it if it hangs, rather than folding it into a routine
+   full-suite run.
 
 7. **Run the code directly**, if you want to explore interactively (still
    from inside `paulou/`):

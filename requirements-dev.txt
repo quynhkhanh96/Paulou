@@ -34,6 +34,14 @@ python-dotenv>=1.0
 azure-cognitiveservices-speech>=1.51.0   # azure_tts.py — official SDK, needs Azure credentials
 edge-tts>=7.2.0                          # edge_tts_provider.py — unofficial, no API key (D31)
 
+# Audio slicing (paulou/stages/tts/audio_slicing.py, Decision Log D5) —
+# needs ffmpeg as a SYSTEM dependency (not pip), e.g. `apt install ffmpeg`.
+# KNOWN FUTURE RISK: pydub depends on the stdlib `audioop` module, which
+# is REMOVED (not just deprecated) in Python 3.13 — pydub has not been
+# updated for this as of the version pinned below. Revisit if upgrading
+# past Python 3.12.
+pydub>=0.25.1
+
 # Heavier stage-specific dependencies (Kaldi, PyTorch, HuggingFace
 # transformers) are deferred until those stages are actually built, per
 # Codebase Conventions ("Dependency management") — not bundled in up front.

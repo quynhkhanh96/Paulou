@@ -10,15 +10,16 @@ testing philosophy.
 cd paulou
 pytest tests/unit -v                  # fast suite — pure functions + G2P dict lookup
 pytest tests/model -v -m model        # slow suite — loads the real spaCy model (~seconds)
-pytest tests/contract -v              # calls the real Gemini API — needs GEMINI_API_KEY
-pytest tests/ -v                      # everything
+pytest tests/contract -v --ignore=tests/contract/test_edge_tts_provider_contract.py
+pytest tests/ -v --ignore=tests/contract/test_edge_tts_provider_contract.py  # everything else
 ```
 `tests/unit/` holds Category 1 (pure functions, ordinary `pytest`
 assertions) per the Testing Conventions note, plus `test_g2p.py`'s
-dictionary-lookup tests (deterministic, no model loading). A few tests in
-`test_g2p.py` call the real `espeak-ng` binary — a system dependency (`apt
-install espeak-ng`), not a pip package — and are skipped automatically if
-it isn't installed.
+dictionary-lookup tests, `test_tts_caching.py` (fully deterministic, no
+real network), and `test_audio_slicing.py`. A few tests call real system
+binaries — `espeak-ng` (`test_g2p.py`) and `ffmpeg`/`avconv`
+(`test_audio_slicing.py`) — neither a pip package, and are skipped
+automatically if missing.
 
 `tests/model/` holds Category 3 (requires loading a real trained model —
 here, spaCy's `fr_core_news_sm`) per the Testing Conventions note. Marked
@@ -32,7 +33,9 @@ invariants, not exact output) per the Testing Conventions note. Calls the
 real Gemini and Azure APIs — needs `GEMINI_API_KEY` and/or
 `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION` set (repo-root `.env`, see
 `.env.example`) and costs quota; skipped automatically if the relevant
-credential isn't set.
+credential isn't set. `test_edge_tts_provider_contract.py` is the
+exception — no credential needed, so run it separately (see its own
+section below for why it isn't included in the routine commands above).
 
 No `tests/api` or `tests/db` directories exist yet — no backend has been
 built (build order step 3+ still in progress).
@@ -159,6 +162,44 @@ real `espeak-ng` binary are marked and skipped if it isn't installed.
 | `test_espeak_fallback_output_has_no_stress_marks` *(requires espeak-ng)* | Verify stress marks (ˈ, ˌ) from eSpeak's isolated-word synthesis are stripped — they'd be linguistically wrong at the chunk level (French stress is rhythmic-group-level, not lexical). | No phoneme contains `ˈ` or `ˌ`. |
 | `test_espeak_fallback_never_raises_for_unknown_word` *(requires espeak-ng)* | Verify the Codebase Conventions contract: `phonemize()` must never raise for "word not found" — falling back is the designed behavior, not an error path. | `source == "espeak"`, non-empty phoneme list, no exception. |
 | `test_espeak_not_found_gives_actionable_error` | Regression test for a real crash found via user testing: on a machine without `espeak-ng` on PATH (confirmed on Windows), the raw `FileNotFoundError` surfaced as a cryptic `[WinError 2]` with no indication of what was missing. Uses `monkeypatch` to simulate this without needing an actual missing binary. | Raises `RuntimeError` with a message containing "espeak-ng executable not found". |
+
+---
+
+## `test_tts_caching.py`
+
+Tests `CachingTTSProvider` in `stages/tts/caching.py`, using a
+`_CountingStubProvider` fixture (fake `TTSProvider` that counts calls) —
+fully deterministic, no real network or credentials needed.
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_cache_miss_calls_underlying_provider` | Verify a first call reaches the wrapped provider and returns its result. | `call_count == 1`; audio/timings match the stub's output. |
+| `test_cache_hit_does_not_call_underlying_provider_again` | Verify a second identical call is served from the filesystem cache, never touching the wrapped provider again. | `call_count` stays `1` after the second call. |
+| `test_different_text_is_a_cache_miss` | Verify the cache key includes the text. | Two different texts -> `call_count == 2`. |
+| `test_different_rate_is_a_cache_miss` | Verify the cache key includes the rate. | Same text, different `rate` -> `call_count == 2`. |
+| `test_different_voice_is_a_cache_miss` | Verify the cache key includes the voice — critical, since ignoring voice would silently return audio in the wrong voice. | Two providers with different `voice`, same text/rate, same cache dir -> each called once, no collision. |
+| `test_voice_property_delegates_to_wrapped_provider` | Verify `CachingTTSProvider.voice` reads through to the wrapped provider (needed for it to satisfy the `TTSProvider` Protocol itself). | `cache.voice == stub.voice`. |
+| `test_cached_word_timings_round_trip_correctly` | Verify `WordTiming` objects survive JSON serialization/deserialization on a cache hit, not just raw audio bytes. | Timings read back from cache equal the originals exactly. |
+| `test_cache_persists_across_provider_instances` | Verify the cache is filesystem-backed (persists across separate `CachingTTSProvider` instances pointed at the same directory), not just an in-memory dict scoped to one instance. | A fresh instance served from disk never calls its own wrapped stub. |
+
+---
+
+## `test_audio_slicing.py`
+
+Tests `slice_audio` in `stages/tts/audio_slicing.py`. Requires `ffmpeg` (or
+`avconv`) — skipped automatically otherwise. Uses a synthetically
+generated 440Hz test tone (pydub's own sine-wave generator) as a stand-in
+for real TTS audio, since no real audio was available to test against in
+the environment this was built in (no network access to Azure/edge-tts's
+endpoints there).
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_slice_duration_matches_expected` | Verify the output duration equals the requested clip length plus padding on both sides. | `len(result) ≈ (end_ms - start_ms) + 2 * padding_ms` (600ms for the test's values), within a small encoder-framing tolerance. |
+| `test_slice_start_is_silent` | Verify the padding region is genuine silence, not just a fade toward zero. | Max amplitude in the first 5ms is exactly `0`. |
+| `test_slice_middle_has_signal` | Verify the actual audio content survives the slice+pad+fade pipeline intact. | Max amplitude well past the padding/fade region is high (>10,000). |
+| `test_slice_with_default_padding_and_fade` | Verify the function works with its documented defaults, not just explicit test values. | Output is longer than the raw requested clip. |
+| `test_slice_produces_valid_decodable_audio` | Sanity check that the output is well-formed audio, not corrupted data. | Decoding the sliced bytes doesn't raise. |
 | `test_from_lexique400_loads_known_words` *(requires `paulou/data/Lexique400.tsv`, git-ignored)* | Verify the real Lexique400 loader (Decision Log D30) returns correct phonemes for a known word. | `"bonjour" → ["b","ɔ̃","ʒ","u","ʁ"]`, `source == "dict"`. |
 | `test_from_lexique400_nasal_vowel_is_one_phoneme` *(requires Lexique400.tsv)* | Verify the combining-mark segmentation (base char + combining tilde = one phoneme), empirically validated against Lexique400's own ASCII phonetic column across all 189,863 rows. | `"avons" → ["a","v","ɔ̃"]`; last phoneme is 2 codepoints, 1 phoneme. |
 | `test_from_lexique400_has_substantial_coverage` *(requires Lexique400.tsv)* | Sanity check that the real database loaded, not an empty/truncated file. | Lexicon has over 100,000 entries. |
