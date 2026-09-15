@@ -143,6 +143,12 @@ Chronological record of major design/architecture decisions, why they were made,
 **Rationale:** `UnitResult.feedback_text` is exactly what this function produces — accepting `UnitResult` as input would be circular (the caller would need `feedback_text` before it exists). The weakest-phone rule is the most natural reading of "watch the [X] sound" but isn't specified anywhere in the notes.
 **Status:** Locked in for MVP; weakest-phone selection may need revisiting if a unit has multiple similarly-low phones and naming just one turns out to be poor pedagogy.
 
+### D32 — Feedback templating redesigned: per-bracket phone grouping, applies to all unit types
+**Decision:** `generate_feedback(calibrated_score, phone_scores)` now groups all phones by score bracket (85-100 / 60-84 / 0-59) and produces one sentence per non-empty bracket plus one overall sentence, instead of picking a single template and naming only the weakest phone. The `unit_type` parameter is removed — the function no longer special-cases or rejects `liaison_group`.
+**Rationale:** Surfaces both strong and weak phones in the same unit, rather than only the weakest point (the original design's problem, which forced the stage 5e phone-to-unit aggregation toward MIN to keep score and feedback consistent — see the design discussion preceding D32). This also exercises D19's second explicitly-allowed option for `liaison_group` ("raw GOP shown with an explicit low-confidence caveat") instead of its first ("no auto-score shown"), since GOP can score individual phones in a liaison sequence for substitution accuracy even though it can't reliably confirm insertion/deletion. The caveat itself is not expressed by this function — attaching it in the UI, keyed on `PronunciationUnit.type`, is the caller's responsibility.
+**Consequence for D25:** the weakest-phone-selection choice in D25 no longer applies (there's no single named phone anymore — phones are grouped, not ranked to one). D25's other point (function signature avoiding circularity with `UnitResult`) still stands.
+**Status:** Locked in.
+
 ---
 
 ### D20 — `GOPScorer` accepts audio + canonical phonemes at any granularity, not just per-unit

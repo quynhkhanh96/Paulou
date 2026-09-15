@@ -86,12 +86,19 @@ class PhoneScore:
 class UnitResult:
     """Scoring result for one PronunciationUnit.
 
-    NOTE (MVP scope, Decision Log D19): `alignment_ops` (Branch 2 output,
+    NOTE (Decision Log D19, D32): `alignment_ops` (Branch 2 output,
     DEL/INS/match) is intentionally omitted here — the AlignmentOp schema
-    isn't designed yet, and MVP excludes Branch 2 entirely. Add it back when
-    that stage is built post-MVP; until then, `phone_scores` is populated
-    for `single` units (Branch 1 / GOP) and left `None` for `liaison_group`
-    units, which get no trustworthy automated score in MVP.
+    isn't designed yet, and MVP excludes Branch 2 entirely. `phone_scores`
+    (Branch 1 / GOP) IS populated for `liaison_group` units too, not just
+    `single` — D19's second option ("raw GOP shown with an explicit
+    low-confidence caveat"), not its first ("no auto-score shown"). GOP can
+    still score individual phones within a liaison_group's combined
+    sequence for substitution-style accuracy; it just can't reliably
+    confirm the liaison sound wasn't entirely missing or added
+    (insertion/deletion, Branch 2's job). This module has no way to
+    express that caveat itself — attaching a "may be unreliable for
+    liaison" note in the UI is the caller's responsibility, using
+    `PronunciationUnit.type`.
     """
 
     unit_id: str

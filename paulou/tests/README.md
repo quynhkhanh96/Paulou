@@ -125,18 +125,23 @@ Tests `calibrate_score` and `PhoneStats` in
 ## `test_feedback_templates.py`
 
 Tests `generate_feedback` in `stages/speech_assessment/feedback.py`.
-MVP-scoped to `single` units only (Decision Log D19).
+REDESIGNED (Decision Log D32) to group phones by score bracket and
+produce multiple sentences instead of one, and to apply uniformly to
+every unit type — no more `unit_type` parameter or `liaison_group`
+special-casing (see that module's docstring for the D19 implications).
 
 | Test | Purpose | Expected outcome |
 |---|---|---|
-| `test_high_score_gives_good_pronunciation_template` | Verify top-tier (85–100) template selection. | `"Good pronunciation!"` |
-| `test_mid_score_names_the_weakest_phone` | Verify mid-tier (60–84) template + `[X]` placeholder substitution. | `"Close, watch the ʁ sound"` |
-| `test_low_score_names_the_weakest_phone` | Verify low-tier (<60) template + `[X]` placeholder substitution. | `"The ʁ sound needs work, try the slow sample"` |
-| `test_boundary_score_85_is_good_pronunciation` | Verify the 85 boundary is inclusive on the high tier, matching the spec's "85–100" range. | `"Good pronunciation!"` |
-| `test_boundary_score_59_is_low_tier` | Verify 59 is correctly assigned to the <60 tier, not the 60–84 tier. | Result contains `"needs work"`. |
-| `test_liaison_group_raises_not_implemented` | Verify the MVP scoping (D19) is enforced in code, not just documentation — liaison feedback can't silently return a bogus string. | Raises `NotImplementedError`. |
-| `test_single_unit_without_phone_scores_raises` | Verify the function can't produce an `[X]` template with no phone to name. | Raises `ValueError`. |
-| `test_unknown_unit_type_raises` | Defensive input validation for an invalid `unit_type`. | Raises `ValueError`. |
+| `test_all_good_phones_singular` | Verify singular phrasing when exactly one phone lands in a bracket. | `"Overall: great job! Good pronunciation on the a sound!"` |
+| `test_all_good_phones_plural` | Verify plural phrasing when 2+ phones land in the same bracket. | `"...Good pronunciation on these sounds: a, m!"` |
+| `test_mixed_brackets_produce_multiple_sentences` | Verify a unit with phones spread across all three brackets produces one sentence per bracket, in order (overall, good, close, needs-work). | Full 4-sentence string, exact match. |
+| `test_close_bracket_plural` | Verify plural phrasing for the 60–84 bracket specifically. | Contains `"Close, watch these sounds: ʁ, ø."` |
+| `test_needs_work_bracket_plural` | Verify plural phrasing for the 0–59 bracket specifically. | Contains `"These sounds need work, try the slow sample: t, d."` |
+| `test_empty_brackets_are_skipped` | Verify a unit with phones in only one bracket doesn't emit empty/templated text for the other two. | No `"Close"` or `"needs work"` substring present. |
+| `test_overall_sentence_boundaries` | Verify the overall-score bracket boundaries (85, 84, 60, 59, 0) each map to the correct sentence. | Each score's result starts with the expected overall sentence. |
+| `test_empty_phone_scores_raises` | Verify the function can't run with nothing to group. | Raises `ValueError`. |
+| `test_out_of_range_calibrated_score_raises` | Defensive validation for `calibrated_score` outside 0–100. | Raises `ValueError` for both `101` and `-1`. |
+| `test_works_uniformly_regardless_of_unit_type` | Verify the function works identically for what would be a `liaison_group`'s phone_scores — no special-casing or rejection. | Correct mixed-bracket sentences, same as any other unit. |
 
 ---
 
