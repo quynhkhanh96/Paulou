@@ -49,6 +49,16 @@ class PronunciationUnit:
     Analyzer implementation. `liaison_consonant` is None for elision_group
     (no consonant is added in elision — see elision.py).
 
+    ALSO EXTENDED (not in the Architecture Spec's original field list):
+    `phonemes: list[str]` — the unit's actual phoneme sequence (for
+    liaison_group, includes the liaison consonant as its own element, not
+    folded into a neighboring phoneme). Needed for stage 5a-2 (phoneme-to-
+    unit grouping, Decision Log D20) to know how many phone_scores from a
+    flat per-chunk GOP call belong to this unit — recovering that count
+    from `ipa` alone isn't reliable, since multi-codepoint phonemes (e.g.
+    nasal vowels) make character-counting ambiguous. `ipa` is derived from
+    `phonemes` (`"".join(phonemes)`), so the two can never drift apart.
+
     NOTE (gap, not yet specced anywhere): `syllables` and `note` have no
     owning stage in the Architecture Spec — no syllabifier, no pedagogical
     note generator. Left as empty placeholders (`[]`, `""`) by
@@ -58,6 +68,7 @@ class PronunciationUnit:
     id: str
     type: PronunciationUnitType
     words: list[str]
+    phonemes: list[str]
     ipa: str
     syllables: list[str]
     liaison_consonant: LiaisonConsonant | None

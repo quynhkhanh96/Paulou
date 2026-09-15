@@ -145,6 +145,43 @@ special-casing (see that module's docstring for the D19 implications).
 
 ---
 
+## `test_phoneme_grouping.py`
+
+Tests `group_phone_scores_by_unit` in
+`stages/speech_assessment/phoneme_grouping.py` (Architecture Spec stage
+5a-2, Decision Log D20) — using directly-constructed `PronunciationUnit`s
+and simulated `PhoneScore`s (Stage A of the GOP scorer work: no real
+GOP/Kaldi/gop-ft yet, see the design discussion).
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_groups_single_units_correctly` | Verify a flat score list splits correctly across two `single` units by phoneme count. | Each unit's group contains exactly its own phones, in order. |
+| `test_groups_liaison_unit_including_consonant` | Verify the liaison consonant (included as its own element in `phonemes`, per core/models.py) is correctly counted and included in the group. | 6-phone liaison unit gets all 6 scores. |
+| `test_multiple_units_various_types_preserve_order` | Verify grouping works across mixed unit types (elision_group + single) in one chunk, preserving order. | Correct per-unit slices in the right order. |
+| `test_raises_on_count_mismatch` | Guard against a real integration bug: total phoneme count across units must match the flat score list length. | Raises `ValueError`. |
+| `test_empty_units_and_scores` | Degenerate case: nothing to group. | Returns `{}`, no crash. |
+
+---
+
+## `test_merge.py`
+
+Tests `merge_to_unit_result` in `stages/speech_assessment/merge.py`
+(Architecture Spec stage 5e, Decision Log D33) — MEAN aggregation of a
+unit's phone scores into its `UnitResult`, using simulated `PhoneScore`
+data (Stage A, same reasoning as `test_phoneme_grouping.py`).
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_mean_aggregation_not_min` | Verify the D33 choice (MEAN, not MIN) is actually what's implemented, not just documented. | `(90+70+40)/3 = 66.67` rounds to `67`, not `40`. |
+| `test_mean_rounds_to_nearest_int` | Flags a real gotcha: Python's `round()` uses round-half-to-even ("banker's rounding"), not always-round-up. | `80.5` rounds to `80`, not `81`. |
+| `test_single_phone_unit_score_equals_that_phone` | Sanity check for the trivial one-phone case. | `calibrated_score` equals that phone's own score exactly. |
+| `test_feedback_text_matches_generate_feedback_output` | Verify `merge_to_unit_result` calls `generate_feedback` with the right arguments, not a divergent inline copy of the same logic. | `result.feedback_text` equals calling `generate_feedback` directly with the same score/phones. |
+| `test_unit_id_and_phone_scores_pass_through_unchanged` | Verify `UnitResult.unit_id` and `.phone_scores` are passed through faithfully. | Exact match to what was passed in. |
+| `test_raises_on_empty_phone_scores` | Guard against merging a unit with nothing to aggregate. | Raises `ValueError`. |
+| `test_works_for_liaison_group_phone_scores_too` | Verify no unit-type special-casing exists here either (Decision Log D19/D32) — a liaison_group's phone_scores merge exactly the same way as any other unit's. | Correct MEAN score; feedback names the weak phone. |
+
+---
+
 ## `test_g2p.py`
 
 Tests `LexiqueEspeakG2P`, `_load_lexicon`, and `_parse_espeak_ipa` in

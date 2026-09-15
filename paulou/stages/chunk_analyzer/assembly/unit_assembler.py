@@ -78,13 +78,14 @@ def assemble_units(
                     f"vowel-initial word)."
                 )
             next_word, next_phonemes = words_with_phonemes[i + 1]
-            combined_ipa = "".join(elided_phonemes) + "".join(next_phonemes)
+            unit_phonemes = list(elided_phonemes) + list(next_phonemes)
             units.append(
                 PronunciationUnit(
                     id=f"unit_{unit_index}",
                     type="elision_group",
                     words=[word, next_word],
-                    ipa=combined_ipa,
+                    phonemes=unit_phonemes,
+                    ipa="".join(unit_phonemes),
                     syllables=[],  # not yet specced — see core/models.py
                     liaison_consonant=None,
                     note="",  # not yet specced — see core/models.py
@@ -100,13 +101,14 @@ def assemble_units(
         if decision is not None and decision.applies:
             word1, phonemes1 = words_with_phonemes[i]
             word2, phonemes2 = words_with_phonemes[i + 1]
-            combined_ipa = "".join(phonemes1) + decision.consonant + "".join(phonemes2)
+            unit_phonemes = list(phonemes1) + [decision.consonant] + list(phonemes2)
             units.append(
                 PronunciationUnit(
                     id=f"unit_{unit_index}",
                     type="liaison_group",
                     words=[word1, word2],
-                    ipa=combined_ipa,
+                    phonemes=unit_phonemes,
+                    ipa="".join(unit_phonemes),
                     syllables=[],  # not yet specced — see module docstring
                     liaison_consonant=decision.consonant,
                     note="",  # not yet specced — see module docstring
@@ -120,6 +122,7 @@ def assemble_units(
                     id=f"unit_{unit_index}",
                     type="single",
                     words=[word],
+                    phonemes=list(phonemes),
                     ipa="".join(phonemes),
                     syllables=[],
                     liaison_consonant=None,

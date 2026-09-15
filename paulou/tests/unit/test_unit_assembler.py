@@ -23,6 +23,7 @@ def test_all_single_words_when_no_liaison_applies():
     assert all(u.scoring_focus == "phoneme_accuracy" for u in units)
     assert all(u.liaison_consonant is None for u in units)
     assert units[0].words == ["le"]
+    assert units[0].phonemes == ["l", "ə"]
     assert units[0].ipa == "lə"
     assert units[1].words == ["chat"]
 
@@ -38,6 +39,7 @@ def test_single_liaison_group_formed():
     assert unit.type == "liaison_group"
     assert unit.words == ["les", "amis"]
     assert unit.liaison_consonant == "z"
+    assert unit.phonemes == ["l", "e", "z", "a", "m", "i"]  # consonant is its own element
     assert unit.ipa == "lezami"
     assert unit.scoring_focus == "liaison_presence_and_continuity"
 
@@ -125,6 +127,7 @@ def test_elision_group_formed():
     unit = units[0]
     assert unit.type == "elision_group"
     assert unit.words == ["l'", "ami"]
+    assert unit.phonemes == ["l", "a", "m", "i"]
     assert unit.ipa == "lami"
     assert unit.liaison_consonant is None
     assert unit.scoring_focus == "elision_correctness"
