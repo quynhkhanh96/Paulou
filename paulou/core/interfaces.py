@@ -18,7 +18,7 @@ up front (same convention as core/models.py).
 
 from typing import Protocol
 
-from core.models import WordTiming
+from core.models import RawPhoneScore, WordTiming
 
 
 class SentenceParser(Protocol):
@@ -32,3 +32,7 @@ class G2PProvider(Protocol):
 class TTSProvider(Protocol):
     voice: str
     def synthesize(self, text: str, rate: float = 1.0) -> tuple[bytes, list[WordTiming]]: ...
+
+
+class GOPScorer(Protocol):
+    def score(self, audio: bytes, canonical_phonemes: list[str]) -> list[RawPhoneScore]: ...

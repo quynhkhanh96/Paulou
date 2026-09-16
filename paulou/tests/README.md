@@ -182,6 +182,28 @@ data (Stage A, same reasoning as `test_phoneme_grouping.py`).
 
 ---
 
+## `test_speech_assessment.py`
+
+Tests `score_chunk` in `stages/speech_assessment/speech_assessment.py` —
+the full stage-5 orchestration (GOP → calibration → grouping → merge),
+using a deterministic `_StubGOPScorer` (Stage A: no real GOP model yet —
+Kaldi/gop-ft is Stage B). `raw_gop_by_phone` lets each test fully control
+what raw score each phoneme gets, so results through calibration are
+predictable; `STATS` gives every test phone a mean=0/std=1 native
+distribution, matching `test_calibration.py`'s own baseline case
+(raw_gop=0.0 → calibrated_score=50).
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_single_unit_scored_correctly` | Verify the full pipeline produces a correct `UnitResult` for a basic one-unit chunk. | `calibrated_score == 50`; `phone_scores` in the right order. |
+| `test_multiple_units_each_get_their_own_result` | Verify a chunk with 2 units (single + liaison_group) produces 2 separate `UnitResult`s with correctly-grouped phone_scores. | Each result's `unit_id` and `phone_scores` match its own unit. |
+| `test_liaison_group_scored_same_way_as_single` | Verify no unit_type special-casing anywhere in this flow (D19/D32/D33) — a liaison_group with one bad and one great phone gets the same kind of mixed feedback a single unit would. | Feedback names both the weak and the strong phone. |
+| `test_raw_gop_flows_through_calibration_correctly` | End-to-end check that a raw GOP value genuinely flows through `calibrate_score` (not bypassed or hardcoded). | A raw_gop far above the native mean calibrates to a high score (>95). |
+| `test_empty_units_returns_empty_list` | Degenerate case: nothing to score. | Returns `[]`, no crash. |
+| `test_raises_on_gop_scorer_count_mismatch` | Guard against a real integration bug: the GOPScorer must return exactly one score per requested canonical phoneme. | Raises `ValueError`. |
+
+---
+
 ## `test_g2p.py`
 
 Tests `LexiqueEspeakG2P`, `_load_lexicon`, and `_parse_espeak_ipa` in

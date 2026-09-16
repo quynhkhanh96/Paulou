@@ -77,6 +77,27 @@ class PronunciationUnit:
 
 
 @dataclass(frozen=True)
+class RawPhoneScore:
+    """Per-phone GOP score, NOT yet calibrated (Decision Log D34).
+
+    Architecture Spec stage 5a originally has `GOPScorer.score()` return
+    `list[PhoneScore]` directly (calibrated_score included). Per D12 (GOP-
+    scorer implementations shouldn't call calibration's pure-function
+    logic themselves — the same reasoning D25 already applied to feedback
+    templating), `GOPScorer.score()` returns this uncalibrated type
+    instead; an orchestration layer (stages/speech_assessment/
+    speech_assessment.py) calls `calibrate_score` on each entry to build
+    real `PhoneScore`s. Same fields as `PhoneScore` minus
+    `calibrated_score`.
+    """
+
+    phone: str
+    raw_gop: float
+    start_ms: int
+    end_ms: int
+
+
+@dataclass(frozen=True)
 class PhoneScore:
     """Per-phone GOP score, calibrated to a 0-100 scale.
 
