@@ -118,3 +118,64 @@ def test_raises_on_gop_scorer_count_mismatch():
 
     with pytest.raises(ValueError):
         score_chunk(b"fake-audio", units, gop, STATS)
+
+
+class _RecordingGOPScorer:
+    """Stub that just records what canonical_phonemes it was called with,
+    and echoes back a trivial score per phone (raw_gop=0.0) — used to
+    verify the SIL-insertion plumbing (Decision Log D35), NOT real
+    alignment behavior (a stub has none to get wrong).
+    """
+
+    def __init__(self):
+        self.received_canonical_phonemes: list[str] | None = None
+
+    def score(self, audio: bytes, canonical_phonemes: list[str]) -> list[RawPhoneScore]:
+        self.received_canonical_phonemes = canonical_phonemes
+        return [
+            RawPhoneScore(phone=p, raw_gop=0.0, start_ms=i * 100, end_ms=i * 100 + 100)
+            for i, p in enumerate(canonical_phonemes)
+        ]
+
+
+def test_sil_inserted_between_units_not_within_them():
+    # "les_amis" (liaison_group, one merged unit) + "arrivent" (single) +
+    # "demain" (single) -> SIL only at the 2 boundaries BETWEEN units, not
+    # inside the liaison_group's own merged phoneme sequence.
+    units = [
+        _unit("u0", "liaison_group", ["l", "e", "z", "a", "m", "i"]),
+        _unit("u1", "single", ["a", "ʁ", "i", "v"]),
+        _unit("u2", "single", ["d", "ə", "m", "ɛ̃"]),
+    ]
+    gop = _RecordingGOPScorer()
+    stats = {
+        **STATS,
+        "ʁ": PhoneStats(0.0, 1.0, 100),
+        "v": PhoneStats(0.0, 1.0, 100),
+        "d": PhoneStats(0.0, 1.0, 100),
+        "ə": PhoneStats(0.0, 1.0, 100),
+        "ɛ̃": PhoneStats(0.0, 1.0, 100),
+    }
+
+    score_chunk(b"fake-audio", units, gop, stats)
+
+    assert gop.received_canonical_phonemes == [
+        "l", "e", "z", "a", "m", "i",  # les_amis — no internal SIL
+        "SIL",
+        "a", "ʁ", "i", "v",  # arrivent
+        "SIL",
+        "d", "ə", "m", "ɛ̃",  # demain
+    ]
+
+
+def test_sil_scores_are_stripped_before_reaching_unit_results():
+    units = [_unit("u0", "single", ["l"]), _unit("u1", "single", ["a"])]
+    gop = _RecordingGOPScorer()
+
+    results = score_chunk(b"fake-audio", units, gop, STATS)
+
+    # Neither unit's phone_scores should ever contain a "SIL" entry —
+    # it's an alignment-only construct, not something to score/display.
+    all_phones = [p.phone for r in results for p in r.phone_scores]
+    assert "SIL" not in all_phones
+    assert all_phones == ["l", "a"]

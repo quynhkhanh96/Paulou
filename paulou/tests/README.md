@@ -201,6 +201,10 @@ distribution, matching `test_calibration.py`'s own baseline case
 | `test_raw_gop_flows_through_calibration_correctly` | End-to-end check that a raw GOP value genuinely flows through `calibrate_score` (not bypassed or hardcoded). | A raw_gop far above the native mean calibrates to a high score (>95). |
 | `test_empty_units_returns_empty_list` | Degenerate case: nothing to score. | Returns `[]`, no crash. |
 | `test_raises_on_gop_scorer_count_mismatch` | Guard against a real integration bug: the GOPScorer must return exactly one score per requested canonical phoneme. | Raises `ValueError`. |
+| `test_sil_inserted_between_units_not_within_them` | Verify the optional-silence plumbing (Decision Log D35): `SIL_PHONE` is inserted between every pair of adjacent units, but NOT inside a liaison_group's own merged phoneme sequence. | Recorded `canonical_phonemes` has `"SIL"` exactly at the 2 boundaries between 3 units, nowhere inside the liaison_group. |
+| `test_sil_scores_are_stripped_before_reaching_unit_results` | Verify SIL never leaks into a `UnitResult`'s `phone_scores` — it's an alignment-only construct, not something to calibrate or display. | No `"SIL"` phone appears in any result's `phone_scores`. |
+
+**Note on what these two SIL tests do NOT verify**: whether "SIL" is genuinely treated as *optional* (zero-duration-allowed) during real alignment — that depends entirely on the actual GOPScorer implementation's internal alignment mechanism (Stage B, not built yet). A stub has no real alignment behavior to get right or wrong; these tests only confirm the plumbing (correct insertion position, correct stripping afterward), which is the contract any real GOPScorer implementation needs to honor.
 
 ---
 

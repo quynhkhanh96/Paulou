@@ -168,6 +168,13 @@ Chronological record of major design/architecture decisions, why they were made,
 **No change to calibration (5d):** calibration remains per-phoneme (z-score/percentile lookup keyed by phone identity), independent of what granularity the GOP call was made at.
 **Status:** Locked in.
 
+### D35 — Optional silence (SIL) inserted between units in canonical_phonemes
+**Decision:** `score_chunk` inserts a `SIL_PHONE = "SIL"` marker between every pair of adjacent `PronunciationUnit`s when building `canonical_phonemes` for the GOP call — NOT within a `liaison_group`/`elision_group`'s own merged phoneme sequence. SIL entries are stripped from the result before calibration.
+**Rationale:** Without a silence marker between units, a real forced aligner has no way to account for a pause/breath a learner (not a native speaker) might take between words — it would fold that silence into the timing/scoring of an adjacent real phone, corrupting both. Not inserted within liaison/elision groups, since those specifically represent phonemes meant to be pronounced with no gap.
+**Known unresolved caveat:** inserting the literal string "SIL" only achieves true optional-silence behavior if the GOPScorer implementation's own alignment mechanism specifically treats it as skippable/zero-duration-allowed (normally a property of FST/lexicon construction, e.g. Kaldi's optional-silence handling) — not something a naive "align this reference, every phone mandatory" implementation gets for free. This is unverified with the current simulated stub (Stage A) and must be confirmed against the real GOPScorer implementation's behavior, and against `fr_kaldi-rhasspy`'s actual phone symbol table (to confirm "SIL" is the right token), once Stage B is built.
+**Explicitly NOT addressed:** SIL within liaison/elision groups, which could help distinguish the Architecture Spec's "Smooth liaison, right rhythm" vs. "Liaison present but slightly separated" feedback cases — flagged as a possible future refinement, out of scope now.
+**Status:** Locked in for the plumbing (insertion position, stripping); the alignment-semantics correctness is open pending Stage B.
+
 ---
 
 ## Engineering / codebase architecture

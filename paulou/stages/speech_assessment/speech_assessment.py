@@ -7,30 +7,47 @@ registered (Decision Log D12) — glue/composition code, like `analyze_chunk`.
 Flow:
     audio + units
       -> build canonical_phonemes by concatenating each unit's `.phonemes`,
-         in order (one GOP call for the whole chunk, per D20 — NOT one
-         call per unit, to preserve coarticulation context)
+         in order, WITH an optional-silence marker (SIL_PHONE) inserted
+         BETWEEN units — see "OPTIONAL SILENCE" below. One GOP call for
+         the whole chunk (per D20 — NOT one call per unit, to preserve
+         coarticulation context).
       -> gop_scorer.score(audio, canonical_phonemes) -> list[RawPhoneScore]
          (UNCALIBRATED — see Decision Log D34)
-      -> calibrate_score() on each entry -> list[PhoneScore]
+      -> strip out the SIL_PHONE entries from the result
+      -> calibrate_score() on each remaining entry -> list[PhoneScore]
       -> group_phone_scores_by_unit() (5a-2, D20) -> per-unit PhoneScores
       -> merge_to_unit_result() (5e, D33 — MEAN aggregation) -> UnitResult
          per unit
 
-STAGE A SCOPE: `gop_scorer` is dependency-injected (matches `analyze_chunk`'s
-`g2p` parameter) — this function doesn't know or care whether it's a real
-GOPScorer (Kaldi/gop-ft, not built yet — Stage B) or a test stub. Tested
-here only with a simulated stub; see tests/unit/test_speech_assessment.py.
+OPTIONAL SILENCE (Decision Log D35) — found during review, not in the
+Architecture Spec: without a silence marker between units, a real forced
+aligner has no way to account for any pause/breath a LEARNER (not a
+native speaker) might take between words — it would be forced to fold
+that silence into the timing/scoring of whichever real phone is adjacent,
+corrupting both. `SIL_PHONE = "SIL"` is inserted between every pair of
+adjacent units (NOT within a liaison_group/elision_group's own merged
+phonemes — those are specifically meant to be pronounced with no gap, so
+inserting SIL there would work against the very thing being taught).
 
-No unit_type special-casing anywhere in this flow (Decision Log D19/D32/
-D33) — `liaison_group` units go through exactly the same GOP scoring,
-calibration, grouping, and merge as `single`/`elision_group` units. Per
-D19's second option, attaching a "may be unreliable for liaison" caveat
-in the UI is the CALLER's responsibility (using `PronunciationUnit.type`),
-not this function's.
+CRITICAL CAVEAT, genuinely unverified: inserting the literal string "SIL"
+into canonical_phonemes only WORKS if the GOPScorer implementation itself
+specifically treats a phone named "SIL" as OPTIONAL (zero-duration
+allowed) during alignment — this is normally a property of the alignment
+FST/lexicon construction (e.g. Kaldi's optional-silence handling), not
+something a plain "align this reference sequence, every phone mandatory"
+implementation gets for free just because one of the strings happens to
+be "SIL". Whether a real GOPScorer implementation (Stage B: Kaldi/gop-ft)
+actually honors this is NOT verified here — a simulated stub has no real
+alignment behavior to get wrong. This is a contract/convention this
+function establishes for any real GOPScorer to honor, not something
+proven correct yet. Also unverified: whether "SIL" (this exact casing) is
+the token the actual `fr_kaldi-rhasspy` acoustic model's phone set uses —
+must be confirmed against that model's real phone symbol table before
+Stage B is wired in.
 """
 
 from core.interfaces import GOPScorer
-from core.models import PhoneScore, PronunciationUnit, UnitResult
+from core.models import PhoneScore, PronunciationUnit, RawPhoneScore, UnitResult
 from stages.speech_assessment.calibration import (
     DEFAULT_MIN_SAMPLE_SIZE,
     PhoneStats,
@@ -38,6 +55,20 @@ from stages.speech_assessment.calibration import (
 )
 from stages.speech_assessment.merge import merge_to_unit_result
 from stages.speech_assessment.phoneme_grouping import group_phone_scores_by_unit
+
+SIL_PHONE = "SIL"
+
+
+def _build_canonical_phonemes_with_sil(units: list[PronunciationUnit]) -> list[str]:
+    """Concatenate units' phonemes, with SIL_PHONE between adjacent units
+    (not within a unit's own merged phonemes — see module docstring).
+    """
+    canonical_phonemes: list[str] = []
+    for i, unit in enumerate(units):
+        if i > 0:
+            canonical_phonemes.append(SIL_PHONE)
+        canonical_phonemes.extend(unit.phonemes)
+    return canonical_phonemes
 
 
 def score_chunk(
@@ -55,19 +86,21 @@ def score_chunk(
     what these mean (no real corpus-derived stats exist yet, D11/D24).
 
     Raises ValueError if `gop_scorer` returns a different number of scores
-    than canonical phonemes were requested for.
+    than canonical phonemes (including SIL) were requested for.
     """
     if not units:
         return []
 
-    canonical_phonemes = [phone for unit in units for phone in unit.phonemes]
+    canonical_phonemes = _build_canonical_phonemes_with_sil(units)
 
     raw_scores = gop_scorer.score(audio, canonical_phonemes)
     if len(raw_scores) != len(canonical_phonemes):
         raise ValueError(
             f"GOPScorer returned {len(raw_scores)} scores for "
-            f"{len(canonical_phonemes)} canonical phonemes."
+            f"{len(canonical_phonemes)} canonical phonemes (incl. SIL)."
         )
+
+    real_scores: list[RawPhoneScore] = [r for r in raw_scores if r.phone != SIL_PHONE]
 
     phone_scores = [
         PhoneScore(
@@ -79,7 +112,7 @@ def score_chunk(
             start_ms=r.start_ms,
             end_ms=r.end_ms,
         )
-        for r in raw_scores
+        for r in real_scores
     ]
 
     grouped = group_phone_scores_by_unit(phone_scores, units)
