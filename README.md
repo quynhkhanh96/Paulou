@@ -52,7 +52,7 @@ User input (sentence)
 | TTS | [`stages/tts/`](stages/tts/) | Sentence-level synthesis with word-boundary timestamps — two swappable providers (Azure Neural, edge-tts, Decision Log D31), plus caching (D7) and chunk/unit audio slicing (D5) |
 | GOP scoring | [`stages/speech_assessment/gop/`](stages/speech_assessment/gop/) | Forced-align + goodness-of-pronunciation, catches substitutions |
 | Free decoding | [`stages/speech_assessment/free_decode/`](stages/speech_assessment/free_decode/) | Unconstrained phone recognition, catches insertions/deletions (liaison dropped or added) |
-| Merge + calibration + feedback | [`stages/speech_assessment/`](stages/speech_assessment/) | Combines both branches into a calibrated score and human-readable feedback |
+| Merge + calibration + feedback | [`stages/speech_assessment/`](stages/speech_assessment/) | Combines both branches into a calibrated score and human-readable feedback — orchestration built and tested (D20/D32/D33/D34/D35), but only against a simulated GOP stub; no real GOP model exists yet |
 
 Every model-backed or externally-dependent stage (parser, G2P source, TTS provider, GOP scorer, free-phone decoder) is defined as a `Protocol` interface and resolved through a small registry, so alternative implementations can be swapped via config without touching the pipeline or other stages — this is what lets `stages/tts/azure_tts.py` and `edge_tts_provider.py` coexist today (Decision Log D31), and is meant to do the same for `stages/speech_assessment/gop/kaldi_gop.py` and `gopft_gop.py` once both exist (see `experiments/`). Pure, deterministic logic (liaison rules, unit assembly, alignment, merging, calibration, feedback templates) is kept as plain functions — no abstraction layer, since there's no real expectation of swapping these.
 
@@ -75,21 +75,23 @@ The core pipeline (`core/`, `stages/`, `pipeline.py`) is plain Python with no de
 
 ## Current status
 
-**Build order steps 1–3 (Roadmap) are fully implemented and tested.** GOP scorer and free-phone recognizer (steps 4+) are still at the design stage — decided in the Architecture Spec, not yet built.
+**Build order steps 1–3 (Roadmap) are fully implemented and tested, plus the orchestration/plumbing half of step 4 (Speech Assessment).** The real GOP model (Kaldi/gop-ft) and free-phone recognizer are still at the design stage — decided in the Architecture Spec, not yet built; everything that can be built and tested *without* a real acoustic model is done.
 
 **Implemented so far:**
-- **Pure functions** (step 1): liaison rule engine (`stages/chunk_analyzer/liaison/rule_engine.py`), elision detection (`stages/chunk_analyzer/elision/elision.py`, Decision Log D28), unit assembly (`stages/chunk_analyzer/assembly/unit_assembler.py`), calibration (`stages/speech_assessment/calibration.py`), feedback templating (`stages/speech_assessment/feedback.py` — scoped to `single` units for MVP, see Decision Log D19).
+- **Pure functions** (step 1): liaison rule engine (`stages/chunk_analyzer/liaison/rule_engine.py`), elision detection (`stages/chunk_analyzer/elision/elision.py`, Decision Log D28), unit assembly (`stages/chunk_analyzer/assembly/unit_assembler.py`), calibration (`stages/speech_assessment/calibration.py`), feedback templating (`stages/speech_assessment/feedback.py` — redesigned in D32 to apply uniformly to every unit type, not just `single` as D19 originally scoped it).
 - **G2P + POS tagging** (step 2): `stages/chunk_analyzer/g2p/lexique_espeak.py` (Lexique400 lookup, Decision Log D30, + eSpeak-ng fallback) and `stages/chunk_analyzer/pos/spacy_tagger.py` (spaCy `fr_core_news_sm`).
 - **Sentence parser + TTS** (step 3): `stages/parsing/gemini_parser.py` (Gemini API, Decision Log D27); TTS has TWO swappable providers — `stages/tts/azure_tts.py` (official Azure SDK) and `stages/tts/edge_tts_provider.py` (unofficial, no API key needed, Decision Log D31) — plus `stages/tts/caching.py` (hash-based cache, D7) and `stages/tts/audio_slicing.py` (chunk/unit clip extraction with silence padding + fade, D5).
+- **Speech Assessment orchestration/plumbing** (step 4, "Stage A" — real GOP model is "Stage B", not started): `stages/speech_assessment/calibration.py` and `feedback.py` (feedback redesigned in Decision Log D32 — groups phones by score bracket instead of naming only the weakest, and now applies uniformly to every unit type, not just `single`), `phoneme_grouping.py` (5a-2, D20), `merge.py` (5e, MEAN aggregation, D33), and `speech_assessment.py` (orchestrates GOP → calibration → grouping → merge into a `UnitResult` per unit, D34/D35). `PronunciationUnit` gained a `phonemes: list[str]` field to support this (not in the Architecture Spec's original schema). Optional-silence (`SIL`) handling between units is implemented but its correctness depends on a real GOPScorer's alignment behavior — unverified (D35). Tested throughout with a simulated stub GOPScorer, not a real acoustic model.
 - Core data models added incrementally as each stage needs them (`core/models.py`): `LiaisonDecision`, `PronunciationUnit`, `PhoneScore`, `UnitResult`, `WordTiming`. `Sentence`, `Chunk`, `Attempt` not needed yet.
-- 95 tests passing (74 fast unit tests, 12 model tests requiring the real spaCy model, 9 contract tests requiring real Gemini/Azure credentials) — see `tests/README.md`. (A 10th contract test file, for edge-tts, needs no credential but isn't included in this count — see that file's own notes on why it's run separately.)
+- 117 tests passing (96 fast unit tests, 12 model tests requiring the real spaCy model, 9 contract tests requiring real Gemini/Azure credentials) — see `tests/README.md`. (A 10th contract test file, for edge-tts, needs no credential but isn't included in this count — see that file's own notes on why it's run separately.)
 
 **Known data/tooling gaps, not yet resolved:**
 - The real Lexique400 database (Decision Log D30 — not Lexique383 as originally named) is wired in via `LexiqueEspeakG2P.from_lexique400()`, but nothing in the codebase calls it by default yet — `pipeline.py` doesn't exist yet to wire it in as the production default, so the plain constructor still loads the small hand-written test fixture. The 33MB file itself isn't committed to the repo (git-ignored), so it must be downloaded separately — see SETUP.md.
 - The native-French-corpus GOP calibration statistics (Decision Log D11) haven't been produced yet — `calibrate_score` takes the stats table as a parameter rather than embedding real numbers.
 - No `PipelineConfig` exists yet to choose a default TTS provider (Azure vs edge-tts) — both are registered and usable, but nothing picks one automatically.
+- No real GOPScorer implementation exists yet (Kaldi or gop-ft) — `stages/speech_assessment/speech_assessment.py`'s orchestration is fully built and tested, but only against a simulated stub. Whether the SIL-based optional-silence handling (D35) actually works correctly depends on a real implementation's alignment behavior, which hasn't been verified.
 
-**Next up (build order step 4):** GOP scorer.
+**Next up (build order step 4, "Stage B"):** a real GOPScorer implementation (Kaldi or gop-ft) — the orchestration it plugs into (calibration, phoneme grouping, merge, feedback) is already built and tested against a simulated stub ("Stage A").
 
 
 **Highest-priority open question, to be resolved early:**
@@ -146,37 +148,37 @@ Qualitative review notebooks (chunking quality, audio playback, GOP alignment vi
 ## Repo structure
 
 ```
-Paulou/                        # repo root
+Paulou/                                # repo root
 ├── docs/
 │   └── assets/
-├── .env.example                 # GEMINI_API_KEY, AZURE_SPEECH_KEY/REGION — copy to .env at this same level
-├── .gitignore
-├── README.md                    # this file
+├── README.md                          # this file
+├── SETUP.md                           # local dev setup (venv, dependencies, running tests)
 ├── requirements-dev.txt
-├── SETUP.md                     # local dev setup (venv, dependencies, running tests)
-└── paulou/                      # the actual Python package
-    ├── core/                    # data models, interfaces (Protocol), registry — built incrementally as stages need them
-    ├── stages/                  # one subfolder per pipeline stage, swappable implementations
-    │   ├── parsing/             # implemented — Gemini API sentence parser (Decision Log D27)
-    │   ├── chunk_analyzer/      # stage 2's sub-modules, nested here (Decision Log D29)
-    │   │   ├── liaison/         # implemented — rule engine
-    │   │   ├── elision/         # implemented — closed-list clitic detection (Decision Log D28)
-    │   │   ├── assembly/        # implemented — unit assembly
-    │   │   ├── g2p/             # implemented — Lexique400 lookup (D30) + eSpeak-ng fallback; test fixture used by default, real DB via from_lexique400() (not committed, .gitignore)
-    │   │   └── pos/             # implemented — spaCy fr_core_news_sm
-    │   ├── speech_assessment/   # implemented — calibration, feedback (single units only for MVP, D19)
-    │   └── tts/                 # implemented — Azure Neural + edge-tts providers, caching, audio slicing (D5/D7/D31)
-    ├── pipeline.py              # not yet built — PaulouPipeline orchestration entry point
-    ├── backend/                 # not yet built — FastAPI app, DB models/repository, background jobs
-    ├── frontend/                # not yet built — client app (TBD)
+├── .env.example                       # GEMINI_API_KEY, AZURE_SPEECH_KEY/REGION — copy to .env at this same level
+├── .gitignore
+└── paulou/                            # the actual Python package
+    ├── core/                          # data models, interfaces (Protocol), registry — built incrementally as stages need them
+    ├── stages/                        # one subfolder per pipeline stage, swappable implementations
+    │   ├── parsing/                   # implemented — Gemini API sentence parser (Decision Log D27)
+    │   ├── chunk_analyzer/            # stage 2's sub-modules, nested here (Decision Log D29)
+    │   │   ├── liaison/               # implemented — rule engine
+    │   │   ├── elision/               # implemented — closed-list clitic detection (Decision Log D28)
+    │   │   ├── assembly/              # implemented — unit assembly
+    │   │   ├── g2p/                   # implemented — Lexique400 lookup (D30) + eSpeak-ng fallback; test fixture used by default, real DB via from_lexique400() (not committed, .gitignore)
+    │   │   └── pos/                   # implemented — spaCy fr_core_news_sm
+    │   ├── speech_assessment/         # partially implemented — calibration, feedback (D32), phoneme grouping (5a-2, D20), merge (5e, D33), orchestration (D34/D35); real GOP model (gop/) not started
+    │   └── tts/                       # implemented — Azure Neural + edge-tts providers, caching, audio slicing (D5/D7/D31)
+    ├── pipeline.py                    # not yet built — PaulouPipeline orchestration entry point
+    ├── backend/                       # not yet built — FastAPI app, DB models/repository, background jobs
+    ├── frontend/                      # not yet built — client app (TBD)
     ├── tests/
-    │   ├── unit/                # implemented — fast, pure functions + G2P dict lookup
-    │   ├── model/               # implemented — slow, loads the real spaCy model
-    │   ├── contract/            # implemented — calls the real Gemini API, needs GEMINI_API_KEY
-    │   ├── fixtures/            # implemented — g2p_golden.tsv (fixture lexicon)
-    │   ├── api/                 # not yet built (no backend yet)
-    │   └── db/                  # not yet built (no backend yet)
-    └── experiments/             # not yet built — implementation comparisons, diagnostic sets, review notebooks
+    │   ├── unit/                      # implemented — fast, pure functions + G2P dict lookup
+    │   ├── model/                     # implemented — slow, loads the real spaCy model
+    │   ├── contract/                  # implemented — calls the real Gemini API, needs GEMINI_API_KEY
+    │   ├── fixtures/                  # implemented — g2p_golden.tsv (fixture lexicon)
+    │   ├── api/                       # not yet built (no backend yet)
+    │   └── db/                        # not yet built (no backend yet)
+    └── experiments/                   # not yet built — implementation comparisons, diagnostic sets, review notebooks
 ```
 
 ---
