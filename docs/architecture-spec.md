@@ -22,8 +22,10 @@ User input (sentence)
 [4] Practice UI            — chunk-level and unit-level drilling
         │
         ▼
-[5] Speech Assessment      — GOP (substitution) + free phone recognition
-                              (insertion/deletion), merged into calibrated feedback
+[5] Speech Assessment      — SUPERSEDED design shown; see Decision Log
+                              D36 for the current direction (single
+                              free-decode + 3-way alignment), not yet
+                              fully specced.
 ```
 
 ---
@@ -172,6 +174,13 @@ Attempt {
 
 ### 5. Speech Assessment (composite stage — two parallel branches + merge)
 
+> **SUPERSEDED by Decision Log D36.** The two-branch design below (5a–5f)
+> is kept here for historical reference only — it is no longer the active
+> design. The replacement (single free-decode + 3-way Levenshtein
+> alignment pipeline) is not yet specced in detail: `AlignmentOp` schema
+> and the confidence-based scoring mechanism are open design questions
+> (see Roadmap). Do not implement against the sub-stages below.
+
 **5a. GOP scorer (Branch 1 — substitution detection)**
 - **Input:** `audio: bytes, canonical_phonemes: list[str]` — accepted at **any granularity**: a single `PronunciationUnit`, a full `Chunk`, or a full `Sentence`. The scorer itself is granularity-agnostic; forced-alignment only needs an audio signal and a reference phoneme sequence, regardless of how long that sequence is (Decision Log D20).
 - **Output:** `list[PhoneScore]` for the whole span passed in, each with phoneme identity, raw GOP, and time boundaries (start/end) from the forced-alignment.
@@ -269,9 +278,6 @@ paulou/
     tts/
       azure_tts.py           # implements TTSProvider
     speech_assessment/
-      gop/
-        kaldi_gop.py          # implements GOPScorer
-        gopft_gop.py          # implements GOPScorer — swappable with the above
       free_decode/
         wav2vec2_cnam.py      # implements FreePhoneRecognizer
       align.py                # pure — Levenshtein DEL/INS

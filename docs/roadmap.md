@@ -6,17 +6,15 @@ Forward-looking list of what's not done yet — deferred decisions, open design 
 
 ## MVP scope note
 
-MVP excludes Branch 2 (free phone recognition, insertion/deletion detection) — see Decision Log D19. `liaison_group` units are fully present in the UI and TTS/practice flow; only automated scoring for "was the liaison present/absent" is out of scope for MVP. This means the item below (previously "Priority #0, blocks MVP") **no longer blocks MVP** — it's now a post-MVP task, and also the basis for the Publication Plan.
+Superseded by Decision Log D36 — the Branch 1/Branch 2 split this note described no longer exists. MVP now uses a single free-decode + 3-way alignment pipeline for Speech Assessment, covering substitution AND insertion/deletion in one pass. This is a SCOPE INCREASE for MVP capability compared to the old plan (liaison insertion/deletion detection was previously post-MVP). Re-write pending the AlignmentOp/scoring design below.
 
 ---
 
-## Post-MVP, highest priority — feeds both the app and the Publication Plan
+## MVP-BLOCKING (moved up from post-MVP per Decision Log D36)
 
-**Canonicalizer bias diagnostic check** (Decision Log D10, D19)
-- Build a small diagnostic audio set: native / substitution / deletion / insertion recordings for a handful of target words/liaison pairs.
-- Run through `Cnam-LMSSC/wav2vec2-french-phonemizer`, compare actual audio vs. model output vs. expected.
-- Determine: does the model honestly report what was said, or does it "correct" toward canonical French?
-- **This result decides whether Branch 2 is worth building as designed, or needs a fallback approach — and, per the Publication Plan, is being designed rigorously enough (multiple speakers, controlled error types, quantitative reporting) to also serve as the paper's core finding, rather than being redone later at higher rigor.**
+**Canonicalizer bias diagnostic check** (Decision Log D10, D36)
+- Under D36, the single free-decode model is now responsible for ALL error types (substitution, insertion, deletion), not just Branch 2 — so this diagnostic can no longer be deferred past MVP.
+- Same build as before: native / substitution / deletion / insertion audio set, run through the chosen free-phone recognizer, check honest-reporting vs. canonicalizing behavior.
 - Owner/status: not started.
 
 ---
@@ -26,9 +24,9 @@ MVP excludes Branch 2 (free phone recognition, insertion/deletion detection) —
 1. **Pure functions first** — liaison rule engine, unit assembly, Levenshtein alignment, merge, calibration, feedback templating. No external dependencies, fastest to implement and test, and the design for these is the most settled already.
 2. **G2P + POS tagging** — Lexique383 + eSpeak-ng fallback, spaCy/Stanza POS tagging. Offline, testable via golden set.
 3. **Sentence parser (LLM chunking) + TTS** — lower technical risk, well-understood approach (LLM call + vendor API wrapper).
-4. **GOP scorer (Branch 1 only)** — sufficient for MVP scope (Decision Log D19); no diagnostic set dependency needed for this alone.
-5. **MVP complete at this point** — steps 1-4 are sufficient to ship (per D19), without Branch 2.
-6. *(Post-MVP)* **Diagnostic audio set + Branch 2 (free phone recognition)** — see "Post-MVP, highest priority" above. Depends on MVP being functional enough to have real practice content/usage to validate against, and doubles as Publication Plan groundwork.
+4. **Diagnostic audio set + free-phone recognizer** — now MVP-blocking (Decision Log D36, was post-MVP). Build the diagnostic set (native/substitution/deletion/insertion) and validate canonicalizer bias BEFORE trusting the recognizer's output for scoring.
+5. **Alignment + scoring pure functions** — 3-way Levenshtein alignment, confidence-based scoring, merge, feedback. AlignmentOp schema and scoring mechanism not yet designed — see Open design questions.
+6. **MVP complete at this point.**
 
 *(This ordering itself is a decision — see Decision Log if it changes.)*
 
@@ -39,7 +37,8 @@ MVP excludes Branch 2 (free phone recognition, insertion/deletion detection) —
 - **Merge logic (Architecture Spec, stage 5e).** How GOP branch output (per-phone scores) and free-decode branch output (DEL/INS ops) combine into one `UnitResult` has not been designed in detail yet. This affects what `feedback.py` can actually say to the user when both branches disagree or only one applies.
 - **Async vs. synchronous scoring API** (Decision Log D15, tentative). Depends on GOP/free-decode latency benchmarking, which hasn't been run yet. Resolve after step 4 above produces working code to benchmark.
 - **UX flow beyond the two mocked screens.** Onboarding, how a user submits a sentence, what a post-practice review/summary looks like — only isolated chunk/unit-level practice screens have been sketched so far, not the surrounding flow.
-- **`gop-ft` vs. Kaldi GOP as the production choice** — currently both are candidate implementations behind the same interface (Decision Log D9); no experiment has been run yet to decide (see `experiments/runners/compare_gop_scorers.py`, not yet executed).
+- **AlignmentOp schema for 3-way alignment** (Decision Log D36) — needs to represent match/substitution/insertion/deletion, and for match/substitution/deletion, which canonical PronunciationUnit it belongs to (insertions don't map to any canonical unit — open question: attach to the nearest unit, or handle separately).
+- **Confidence-based scoring mechanism** (Decision Log D36) — GOP's log-ratio doesn't apply; need a new way to turn "matched with confidence X" / "substituted" / "missing" / "extra" into a 0-100 score per unit.
 - **`PronunciationUnit.syllables` and `.note` have no owning stage.** No syllabifier and no pedagogical-note generator are designed anywhere in the Architecture Spec. `assemble_units` currently leaves both as empty placeholders (`[]`, `""`).
 
 ---

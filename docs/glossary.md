@@ -40,7 +40,7 @@ Reference for terms used throughout the other notes (Decision Log, Architecture 
 - **PronunciationUnit** — the atomic unit of practice and scoring in Paulou; a `single` word, a `liaison_group` (2 words joined by liaison), or an `elision_group` (2 words joined by elision). See Architecture Spec for full schema.
 - **Chunk** — a rhythmic-group-sized piece of a sentence, containing one or more `PronunciationUnit`s. The intermediate level between a full sentence and individual pronunciation units.
 - **scoring_focus** — a field on `PronunciationUnit` indicating which kind of error the unit is scored for: `phoneme_accuracy` (substitution-style scoring, for `single` units), `liaison_presence_and_continuity` (does the liaison sound exist and is it not awkwardly paused, for `liaison_group` units), or `elision_correctness` (for `elision_group` units).
-- **Branch 1 / Branch 2** — shorthand used throughout the notes for the two parallel Speech Assessment paths: Branch 1 = GOP/forced-align (substitution detection), Branch 2 = free phone recognition (insertion/deletion detection). See Architecture Spec, stage 5.
+- **Branch 1 / Branch 2** — shorthand used throughout the notes for the two parallel Speech Assessment paths: Branch 1 = GOP/forced-align (substitution detection), Branch 2 = free phone recognition (insertion/deletion detection). See Architecture Spec, stage 5. Superseded by Decision Log D36 — kept here only to help read older Decision Log entries (D9, D10, D19, D20, D33–D35) that predate the single-pipeline design.
 
 ---
 

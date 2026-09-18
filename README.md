@@ -37,8 +37,9 @@ User input (sentence)
 [4] Practice UI            — chunk-level and unit-level drilling
         │
         ▼
-[5] Speech Assessment      — GOP scoring (substitution) + free phone recognition
-                              (insertion/deletion), merged into calibrated feedback
+[5] Speech Assessment      — SUPERSEDED design shown; see Decision Log D36
+                              for the current direction (single free-decode
+                              + 3-way alignment), not yet fully specced
 ```
 
 | Stage | Folder | What it does |
@@ -50,11 +51,9 @@ User input (sentence)
 | Elision detection | [`stages/chunk_analyzer/elision/`](stages/chunk_analyzer/elision/) | Closed-list lookup for elided clitics (l', d', j', ...) — distinct from liaison, Decision Log D28 |
 | Unit assembly | [`stages/chunk_analyzer/assembly/`](stages/chunk_analyzer/assembly/) | Groups words into `single`, `liaison_group`, or `elision_group` `PronunciationUnit`s |
 | TTS | [`stages/tts/`](stages/tts/) | Sentence-level synthesis with word-boundary timestamps — two swappable providers (Azure Neural, edge-tts, Decision Log D31), plus caching (D7) and chunk/unit audio slicing (D5) |
-| GOP scoring | [`stages/speech_assessment/gop/`](stages/speech_assessment/gop/) | Forced-align + goodness-of-pronunciation, catches substitutions |
-| Free decoding | [`stages/speech_assessment/free_decode/`](stages/speech_assessment/free_decode/) | Unconstrained phone recognition, catches insertions/deletions (liaison dropped or added) |
-| Merge + calibration + feedback | [`stages/speech_assessment/`](stages/speech_assessment/) | Combines both branches into a calibrated score and human-readable feedback — orchestration built and tested (D20/D32/D33/D34/D35), but only against a simulated GOP stub; no real GOP model exists yet |
+| Speech Assessment | [`stages/speech_assessment/`](stages/speech_assessment/) | **Superseded design (Decision Log D36)** — the GOP/free-decode two-branch split shown elsewhere in this README no longer applies. Replaced by a single free-decode + 3-way alignment pipeline; `AlignmentOp` schema and scoring mechanism not yet designed. Previously-built orchestration (D20/D32/D33/D34/D35) was tested only against a simulated stub and is not being carried forward as-is. |
 
-Every model-backed or externally-dependent stage (parser, G2P source, TTS provider, GOP scorer, free-phone decoder) is defined as a `Protocol` interface and resolved through a small registry, so alternative implementations can be swapped via config without touching the pipeline or other stages — this is what lets `stages/tts/azure_tts.py` and `edge_tts_provider.py` coexist today (Decision Log D31), and is meant to do the same for `stages/speech_assessment/gop/kaldi_gop.py` and `gopft_gop.py` once both exist (see `experiments/`). Pure, deterministic logic (liaison rules, unit assembly, alignment, merging, calibration, feedback templates) is kept as plain functions — no abstraction layer, since there's no real expectation of swapping these.
+Every model-backed or externally-dependent stage (parser, G2P source, TTS provider, GOP scorer, free-phone decoder) is defined as a `Protocol` interface and resolved through a small registry, so alternative implementations can be swapped via config without touching the pipeline or other stages — this is what lets `stages/tts/azure_tts.py` and `edge_tts_provider.py` coexist today (Decision Log D31). The GOP-scorer swappability example (`kaldi_gop.py`/`gopft_gop.py`) no longer applies — see Decision Log D36; the swappable interface for Speech Assessment going forward is `FreePhoneRecognizer` alone. Pure, deterministic logic (liaison rules, unit assembly, alignment, merging, calibration, feedback templates) is kept as plain functions — no abstraction layer, since there's no real expectation of swapping these.
 
 The core pipeline (`core/`, `stages/`, `pipeline.py`) is plain Python with no dependency on any UI layer. It's callable directly from a notebook or test, and a thin `backend/api/` (FastAPI) wraps it for the eventual frontend — the pipeline itself has no knowledge that a backend or frontend exists.
 
@@ -65,7 +64,7 @@ The core pipeline (`core/`, `stages/`, `pipeline.py`) is plain Python with no de
 | Decision | Why | Backing |
 |---|---|---|
 | Custom GOP pipeline instead of Azure Pronunciation Assessment | Azure gives no control over the reference phoneme sequence and lacks phoneme-level detail for `fr-FR`; liaison handling is unverifiable | — |
-| Two parallel branches (GOP forced-align + free phone recognition) instead of one model | Forced-align GOP is strong at catching substitutions but structurally blind to insertion/deletion, which is exactly where liaison errors show up | `experiments/runners/compare_gop_scorers.py` |
+| ~~Two parallel branches (GOP forced-align + free phone recognition)~~ — **superseded, Decision Log D36** | Reversed in favor of a single free-decode + 3-way Levenshtein alignment pipeline (substitution + insertion + deletion in one pass) — faster to build and control for MVP, and matches the pattern used by other current open-source pronunciation tools (OpenPronounce, Echoic) | — |
 | Liaison modeled as its own `PronunciationUnit` type, not a word-level footnote | Liaison is a resyllabification phenomenon — scoring and drilling it as two separate words loses the thing being taught | — |
 | Unsupervised percentile/z-score calibration, not a supervised regressor | No labeled French pronunciation dataset exists (unlike English's speechocean762); building one is deferred until there's real usage data to justify it | — |
 | Sentence-level TTS synthesis (not per-chunk or per-unit) | Preserves natural prosody and in-context liaison; chunks/units are sliced from one audio pass via timestamps, not synthesized separately | — |
@@ -81,6 +80,11 @@ The core pipeline (`core/`, `stages/`, `pipeline.py`) is plain Python with no de
 - **Pure functions** (step 1): liaison rule engine (`stages/chunk_analyzer/liaison/rule_engine.py`), elision detection (`stages/chunk_analyzer/elision/elision.py`, Decision Log D28), unit assembly (`stages/chunk_analyzer/assembly/unit_assembler.py`), calibration (`stages/speech_assessment/calibration.py`), feedback templating (`stages/speech_assessment/feedback.py` — redesigned in D32 to apply uniformly to every unit type, not just `single` as D19 originally scoped it).
 - **G2P + POS tagging** (step 2): `stages/chunk_analyzer/g2p/lexique_espeak.py` (Lexique400 lookup, Decision Log D30, + eSpeak-ng fallback) and `stages/chunk_analyzer/pos/spacy_tagger.py` (spaCy `fr_core_news_sm`).
 - **Sentence parser + TTS** (step 3): `stages/parsing/gemini_parser.py` (Gemini API, Decision Log D27); TTS has TWO swappable providers — `stages/tts/azure_tts.py` (official Azure SDK) and `stages/tts/edge_tts_provider.py` (unofficial, no API key needed, Decision Log D31) — plus `stages/tts/caching.py` (hash-based cache, D7) and `stages/tts/audio_slicing.py` (chunk/unit clip extraction with silence padding + fade, D5).
+> **Superseded by Decision Log D36** — the item below describes work built
+> against the abandoned two-branch (GOP + free-decode) design. It is kept
+> here as an accurate historical record of what was built and tested, not
+> as current architecture. None of it is confirmed to carry forward
+> unchanged into the single-pipeline redesign.
 - **Speech Assessment orchestration/plumbing** (step 4, "Stage A" — real GOP model is "Stage B", not started): `stages/speech_assessment/calibration.py` and `feedback.py` (feedback redesigned in Decision Log D32 — groups phones by score bracket instead of naming only the weakest, and now applies uniformly to every unit type, not just `single`), `phoneme_grouping.py` (5a-2, D20), `merge.py` (5e, MEAN aggregation, D33), and `speech_assessment.py` (orchestrates GOP → calibration → grouping → merge into a `UnitResult` per unit, D34/D35). `PronunciationUnit` gained a `phonemes: list[str]` field to support this (not in the Architecture Spec's original schema). Optional-silence (`SIL`) handling between units is implemented but its correctness depends on a real GOPScorer's alignment behavior — unverified (D35). Tested throughout with a simulated stub GOPScorer, not a real acoustic model.
 - Core data models added incrementally as each stage needs them (`core/models.py`): `LiaisonDecision`, `PronunciationUnit`, `PhoneScore`, `UnitResult`, `WordTiming`. `Sentence`, `Chunk`, `Attempt` not needed yet.
 - 117 tests passing (96 fast unit tests, 12 model tests requiring the real spaCy model, 9 contract tests requiring real Gemini/Azure credentials) — see `tests/README.md`. (A 10th contract test file, for edge-tts, needs no credential but isn't included in this count — see that file's own notes on why it's run separately.)
@@ -91,11 +95,10 @@ The core pipeline (`core/`, `stages/`, `pipeline.py`) is plain Python with no de
 - No `PipelineConfig` exists yet to choose a default TTS provider (Azure vs edge-tts) — both are registered and usable, but nothing picks one automatically.
 - No real GOPScorer implementation exists yet (Kaldi or gop-ft) — `stages/speech_assessment/speech_assessment.py`'s orchestration is fully built and tested, but only against a simulated stub. Whether the SIL-based optional-silence handling (D35) actually works correctly depends on a real implementation's alignment behavior, which hasn't been verified.
 
-**Next up (build order step 4, "Stage B"):** a real GOPScorer implementation (Kaldi or gop-ft) — the orchestration it plugs into (calibration, phoneme grouping, merge, feedback) is already built and tested against a simulated stub ("Stage A").
+**Next up:** design the replacement pipeline per Decision Log D36 — `AlignmentOp` schema and confidence-based scoring — then implement a real `FreePhoneRecognizer`. See Roadmap.
 
-
-**Highest-priority open question, to be resolved early:**
-- **Canonicalizer bias in the free phone recognition branch.** The planned insertion/deletion branch relies on a wav2vec2-based free decoder reporting what the user *actually* said rather than "correcting" it toward canonical French — a documented failure mode in mispronunciation detection literature. Before investing further in that branch, a small diagnostic set (native / substitution / deletion / insertion recordings) needs to be run through the model to check which behavior it exhibits.
+**MVP-blocking (moved up from post-MVP per Decision Log D36):**
+- **Canonicalizer bias in the free phone recognizer.** Since D36 makes one free-decode model responsible for scoring ALL error types (not just insertion/deletion as originally scoped), this diagnostic can no longer be deferred past MVP. A small diagnostic set (native / substitution / deletion / insertion recordings) needs to be run through the model before its output can be trusted for scoring.
 
 **Known limitations (by design, not oversight):**
 - Liaison detection is rule-based (`stages/chunk_analyzer/liaison/rule_engine.py`), which is expected to be incomplete on unconstrained free-form input containing rare vocabulary, proper nouns, or borrowed words. This is an accepted MVP tradeoff (Decision Log D4), deferred post-MVP.
@@ -166,7 +169,7 @@ Paulou/                                # repo root
     │   │   ├── assembly/              # implemented — unit assembly
     │   │   ├── g2p/                   # implemented — Lexique400 lookup (D30) + eSpeak-ng fallback; test fixture used by default, real DB via from_lexique400() (not committed, .gitignore)
     │   │   └── pos/                   # implemented — spaCy fr_core_news_sm
-    │   ├── speech_assessment/         # partially implemented — calibration, feedback (D32), phoneme grouping (5a-2, D20), merge (5e, D33), orchestration (D34/D35); real GOP model (gop/) not started
+    │   ├── speech_assessment/         # design superseded (D36) — see Current status; being redesigned around a single free-decode + alignment pipeline, no gop/ subfolder planned
     │   └── tts/                       # implemented — Azure Neural + edge-tts providers, caching, audio slicing (D5/D7/D31)
     ├── pipeline.py                    # not yet built — PaulouPipeline orchestration entry point
     ├── backend/                       # not yet built — FastAPI app, DB models/repository, background jobs

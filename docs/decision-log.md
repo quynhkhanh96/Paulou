@@ -175,6 +175,31 @@ Chronological record of major design/architecture decisions, why they were made,
 **Explicitly NOT addressed:** SIL within liaison/elision groups, which could help distinguish the Architecture Spec's "Smooth liaison, right rhythm" vs. "Liaison present but slightly separated" feedback cases — flagged as a possible future refinement, out of scope now.
 **Status:** Locked in for the plumbing (insertion position, stripping); the alignment-semantics correctness is open pending Stage B.
 
+### D36 — [REVERSAL of D9] Single free-decode + 3-way alignment pipeline,
+replacing the two-branch GOP/free-decode architecture
+
+**Decision:** Speech Assessment abandons the two-branch design (D9: Branch 1 GOP forced-align for substitution, Branch 2 free-decode for insertion/deletion). Instead: one free-phone-recognition pass per chunk/sentence, aligned to the canonical phoneme sequence via full three-operation Levenshtein alignment (substitution + insertion + deletion — not just DEL/INS as D9 originally scoped stage 5c). This single alignment result is now the sole source of both "was this phone right" and "was a phone missing/added" — no separate GOP/forced-align branch.
+
+**Rationale:**
+- Priority is the fastest path to a working MVP that stays legible and controllable end-to-end for a solo developer without prior GOP/Kaldi experience — not the most linguistically-established option.
+- Direct verification of two currently-maintained open-source pronunciation-assessment tools with real French support (OpenPronounce, Echoic) shows both use exactly this pattern — free phone-decode + alignment, not GOP/Kaldi — a real community precedent, not just a theoretical preference.
+- Eliminates the entire category of engineering risk carried by the GOP options investigated (Kaldi GOP-DNN, gop-ft): no Kaldi/PyKaldi toolchain, no acoustic-model-format conversion from fr_kaldi-rhasspy, no need to verify optional-silence semantics against an unfamiliar Kaldi FST/lexicon convention (D35's open caveat becomes moot under this design).
+- A single 3-way Levenshtein alignment against one free-decode pass structurally catches everything D9's two branches were built to catch.
+
+**Tradeoff accepted:**
+- Score is inherently more binary (matched / substituted / missing / extra) than GOP's continuous log-likelihood-ratio. A graded 0-100 score needs a new design using the decoder's own per-position confidence — not GOP's ratio. Not yet designed.
+- Canonicalizer bias (D10) risk is now concentrated on the ONE scoring mechanism for ALL error types, not just Branch 2 as D10 originally scoped it. The diagnostic validation D10 calls for is now MVP-blocking, not post-MVP — see Roadmap.
+
+**Status:** Locked in for direction; implementation blocked on the follow-up redesign (AlignmentOp schema, confidence-based scoring — see Roadmap open design questions).
+
+**Consequences (flagged, not resolved here):**
+- D19 (MVP excludes Branch 2) — moot as written; see Roadmap.
+- D20 (phoneme-to-unit grouping by flat order+count) — breaks under insertions/deletions; grouping must move to the alignment output itself.
+- D33 (MEAN aggregation of calibrated phone scores) — concept may survive, but "a phone's score" needs redefining for deletion/insertion ops.
+- D34 (`GOPScorer` returns uncalibrated `RawPhoneScore`) — `GOPScorer` Protocol and `RawPhoneScore` are obsolete for this pipeline; `FreePhoneRecognizer` becomes the sole model-backed interface for this stage.
+- D35 (SIL_PHONE relying on Kaldi optional-silence FST semantics) — no longer applies; representing inter-word pauses in this pipeline is a new open question.
+- Architecture Spec stage 5 and the Roadmap's MVP scope/build order need rewriting to match — see those notes.
+
 ---
 
 ## Engineering / codebase architecture
