@@ -120,91 +120,29 @@ Tests `calibrate_score` and `PhoneStats` in
 | `test_undersampled_phone_without_fallback_uses_its_own_stats_anyway` | Verify the soft-degradation policy: use what data exists rather than hard-failing when there's no better option. | Score computed from the phone's own (undersampled) stats. |
 | `test_zero_std_does_not_crash` | Guard against division-by-zero on a degenerate (`std=0`) distribution. | `z` forced to `0.0`; `score == 50`; no exception. |
 
----
-
-## `test_feedback_templates.py`
-
-Tests `generate_feedback` in `stages/speech_assessment/feedback.py`.
-REDESIGNED (Decision Log D32) to group phones by score bracket and
-produce multiple sentences instead of one, and to apply uniformly to
-every unit type — no more `unit_type` parameter or `liaison_group`
-special-casing (see that module's docstring for the D19 implications).
-
-| Test | Purpose | Expected outcome |
-|---|---|---|
-| `test_all_good_phones_singular` | Verify singular phrasing when exactly one phone lands in a bracket. | `"Overall: great job! Good pronunciation on the a sound!"` |
-| `test_all_good_phones_plural` | Verify plural phrasing when 2+ phones land in the same bracket. | `"...Good pronunciation on these sounds: a, m!"` |
-| `test_mixed_brackets_produce_multiple_sentences` | Verify a unit with phones spread across all three brackets produces one sentence per bracket, in order (overall, good, close, needs-work). | Full 4-sentence string, exact match. |
-| `test_close_bracket_plural` | Verify plural phrasing for the 60–84 bracket specifically. | Contains `"Close, watch these sounds: ʁ, ø."` |
-| `test_needs_work_bracket_plural` | Verify plural phrasing for the 0–59 bracket specifically. | Contains `"These sounds need work, try the slow sample: t, d."` |
-| `test_empty_brackets_are_skipped` | Verify a unit with phones in only one bracket doesn't emit empty/templated text for the other two. | No `"Close"` or `"needs work"` substring present. |
-| `test_overall_sentence_boundaries` | Verify the overall-score bracket boundaries (85, 84, 60, 59, 0) each map to the correct sentence. | Each score's result starts with the expected overall sentence. |
-| `test_empty_phone_scores_raises` | Verify the function can't run with nothing to group. | Raises `ValueError`. |
-| `test_out_of_range_calibrated_score_raises` | Defensive validation for `calibrated_score` outside 0–100. | Raises `ValueError` for both `101` and `-1`. |
-| `test_works_uniformly_regardless_of_unit_type` | Verify the function works identically for what would be a `liaison_group`'s phone_scores — no special-casing or rejection. | Correct mixed-bracket sentences, same as any other unit. |
+**Status note (Decision Log D36):** the two-branch Speech Assessment design
+this file was written for (GOP forced-align + free-decode) has been
+replaced by a single free-decode + 3-way alignment pipeline. Unlike the
+four sections removed below, this file and its underlying
+`calibration.py` are kept for now — the z-score/percentile math itself
+isn't GOP-specific, and may be reused for calibrating a confidence-based
+score once the replacement pipeline's `AlignmentOp` design is settled.
+Whether it survives as-is (just a renamed parameter) or gets replaced too
+is still an open question — not resolved yet.
 
 ---
 
-## `test_phoneme_grouping.py`
-
-Tests `group_phone_scores_by_unit` in
-`stages/speech_assessment/phoneme_grouping.py` (Architecture Spec stage
-5a-2, Decision Log D20) — using directly-constructed `PronunciationUnit`s
-and simulated `PhoneScore`s (Stage A of the GOP scorer work: no real
-GOP/Kaldi/gop-ft yet, see the design discussion).
-
-| Test | Purpose | Expected outcome |
-|---|---|---|
-| `test_groups_single_units_correctly` | Verify a flat score list splits correctly across two `single` units by phoneme count. | Each unit's group contains exactly its own phones, in order. |
-| `test_groups_liaison_unit_including_consonant` | Verify the liaison consonant (included as its own element in `phonemes`, per core/models.py) is correctly counted and included in the group. | 6-phone liaison unit gets all 6 scores. |
-| `test_multiple_units_various_types_preserve_order` | Verify grouping works across mixed unit types (elision_group + single) in one chunk, preserving order. | Correct per-unit slices in the right order. |
-| `test_raises_on_count_mismatch` | Guard against a real integration bug: total phoneme count across units must match the flat score list length. | Raises `ValueError`. |
-| `test_empty_units_and_scores` | Degenerate case: nothing to group. | Returns `{}`, no crash. |
-
----
-
-## `test_merge.py`
-
-Tests `merge_to_unit_result` in `stages/speech_assessment/merge.py`
-(Architecture Spec stage 5e, Decision Log D33) — MEAN aggregation of a
-unit's phone scores into its `UnitResult`, using simulated `PhoneScore`
-data (Stage A, same reasoning as `test_phoneme_grouping.py`).
-
-| Test | Purpose | Expected outcome |
-|---|---|---|
-| `test_mean_aggregation_not_min` | Verify the D33 choice (MEAN, not MIN) is actually what's implemented, not just documented. | `(90+70+40)/3 = 66.67` rounds to `67`, not `40`. |
-| `test_mean_rounds_to_nearest_int` | Flags a real gotcha: Python's `round()` uses round-half-to-even ("banker's rounding"), not always-round-up. | `80.5` rounds to `80`, not `81`. |
-| `test_single_phone_unit_score_equals_that_phone` | Sanity check for the trivial one-phone case. | `calibrated_score` equals that phone's own score exactly. |
-| `test_feedback_text_matches_generate_feedback_output` | Verify `merge_to_unit_result` calls `generate_feedback` with the right arguments, not a divergent inline copy of the same logic. | `result.feedback_text` equals calling `generate_feedback` directly with the same score/phones. |
-| `test_unit_id_and_phone_scores_pass_through_unchanged` | Verify `UnitResult.unit_id` and `.phone_scores` are passed through faithfully. | Exact match to what was passed in. |
-| `test_raises_on_empty_phone_scores` | Guard against merging a unit with nothing to aggregate. | Raises `ValueError`. |
-| `test_works_for_liaison_group_phone_scores_too` | Verify no unit-type special-casing exists here either (Decision Log D19/D32) — a liaison_group's phone_scores merge exactly the same way as any other unit's. | Correct MEAN score; feedback names the weak phone. |
-
----
-
-## `test_speech_assessment.py`
-
-Tests `score_chunk` in `stages/speech_assessment/speech_assessment.py` —
-the full stage-5 orchestration (GOP → calibration → grouping → merge),
-using a deterministic `_StubGOPScorer` (Stage A: no real GOP model yet —
-Kaldi/gop-ft is Stage B). `raw_gop_by_phone` lets each test fully control
-what raw score each phoneme gets, so results through calibration are
-predictable; `STATS` gives every test phone a mean=0/std=1 native
-distribution, matching `test_calibration.py`'s own baseline case
-(raw_gop=0.0 → calibrated_score=50).
-
-| Test | Purpose | Expected outcome |
-|---|---|---|
-| `test_single_unit_scored_correctly` | Verify the full pipeline produces a correct `UnitResult` for a basic one-unit chunk. | `calibrated_score == 50`; `phone_scores` in the right order. |
-| `test_multiple_units_each_get_their_own_result` | Verify a chunk with 2 units (single + liaison_group) produces 2 separate `UnitResult`s with correctly-grouped phone_scores. | Each result's `unit_id` and `phone_scores` match its own unit. |
-| `test_liaison_group_scored_same_way_as_single` | Verify no unit_type special-casing anywhere in this flow (D19/D32/D33) — a liaison_group with one bad and one great phone gets the same kind of mixed feedback a single unit would. | Feedback names both the weak and the strong phone. |
-| `test_raw_gop_flows_through_calibration_correctly` | End-to-end check that a raw GOP value genuinely flows through `calibrate_score` (not bypassed or hardcoded). | A raw_gop far above the native mean calibrates to a high score (>95). |
-| `test_empty_units_returns_empty_list` | Degenerate case: nothing to score. | Returns `[]`, no crash. |
-| `test_raises_on_gop_scorer_count_mismatch` | Guard against a real integration bug: the GOPScorer must return exactly one score per requested canonical phoneme. | Raises `ValueError`. |
-| `test_sil_inserted_between_units_not_within_them` | Verify the optional-silence plumbing (Decision Log D35): `SIL_PHONE` is inserted between every pair of adjacent units, but NOT inside a liaison_group's own merged phoneme sequence. | Recorded `canonical_phonemes` has `"SIL"` exactly at the 2 boundaries between 3 units, nowhere inside the liaison_group. |
-| `test_sil_scores_are_stripped_before_reaching_unit_results` | Verify SIL never leaks into a `UnitResult`'s `phone_scores` — it's an alignment-only construct, not something to calibrate or display. | No `"SIL"` phone appears in any result's `phone_scores`. |
-
-**Note on what these two SIL tests do NOT verify**: whether "SIL" is genuinely treated as *optional* (zero-duration-allowed) during real alignment — that depends entirely on the actual GOPScorer implementation's internal alignment mechanism (Stage B, not built yet). A stub has no real alignment behavior to get right or wrong; these tests only confirm the plumbing (correct insertion position, correct stripping afterward), which is the contract any real GOPScorer implementation needs to honor.
+**Removed per Decision Log D36.** This section used to document
+`test_feedback_templates.py`, `test_phoneme_grouping.py`, `test_merge.py`,
+and `test_speech_assessment.py` — tests for `stages/speech_assessment/
+feedback.py`, `phoneme_grouping.py`, `merge.py`, and `speech_assessment.py`
+respectively. All four implementation files and their test files were
+deleted together: they were built entirely around the two-branch GOP/
+free-decode architecture (D9), which D36 replaced with a single
+free-decode + 3-way alignment pipeline. Their replacements aren't written
+yet — no `AlignmentOp` schema or confidence-based scoring mechanism exists
+to test against. See Decision Log D36 and the Roadmap's open design
+questions.
 
 ---
 

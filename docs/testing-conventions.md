@@ -3,6 +3,13 @@
 How testing is organized across the codebase. Companion to the Architecture Spec (stage definitions) and Decision Log (D16 covers the tests/ vs. experiments/ split at a high level — this note is the detailed version).
 
 ---
+> **Partially superseded by Decision Log D36.** The GOP-scorer contract-test
+> and free-decode-canonicalizer-bias examples below describe the abandoned
+> two-branch design and were never implemented as real files — they're
+> kept as illustration of the category-2/3 pattern, not as a spec to build
+> against. The replacement stage (single free-decode + 3-way alignment)
+> needs its own contract test (`test_free_phone_recognizer_contract.py`)
+> and model test once `AlignmentOp` is designed — not yet written.
 
 ## Core principle: match the test strategy to the module's nature
 
@@ -134,6 +141,11 @@ The native/substitution/deletion/insertion recordings (Decision Log D10, "highes
 - **In `experiments/`:** one-time or periodic comparative evaluation (e.g. "which GOP implementation ranks better, Kaldi or gop-ft?")
 
 **Must be version-pinned** (hash or tag) so that a comparison run today and one run in three months are evaluated against the same data — otherwise "did the model get better" and "did the test data change" become indistinguishable.
+
+Per Decision Log D36, this set is no longer solely a `tests/model/`
+regression fixture for a post-MVP Branch 2 — it is now also required to
+validate the single free-decode pipeline before MVP scoring can be
+trusted at all (see Roadmap).
 
 ---
 
