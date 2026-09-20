@@ -248,6 +248,87 @@ Attempt {
 | 60–84 | "Close, watch the [X] sound" | "Liaison present but slightly separated" |
 | <60 | "The [X] sound needs work, try the slow sample" | "Missing the /z/ liaison, or a pause between words" |
 
+### 5 (redesigned) — Single free-decode + 3-way alignment pipeline (Decision Log D36)
+
+Replaces stages 5a–5f above in their entirety. Implemented so far:
+`align_phonemes` (alignment), `score_alignment_op` + `calibrate_score`
+(scoring), `merge_to_unit_result` (merge). Not yet implemented: a real
+`FreePhoneRecognizer`, and feedback templating.
+
+**5b'. Free Phone Recognizer** (Protocol only, no implementation yet)
+- **Input:** `audio: bytes`
+- **Output:** `tuple[list[str], list[float], list[tuple[int, int]]]` —
+  decoded phone sequence, per-position confidence (the decoder's own
+  top-1 probability at that position — since the decoded phone at
+  position j is itself the argmax of position j's distribution, this
+  equals the max of the full posterior; no need to carry the full
+  distribution), and per-position `(start_ms, end_ms)` boundaries.
+- **Simplified from the original stage 5b signature** (`tuple[list[str],
+  list[list[float]]]`, full posterior per position): once insertion
+  scoring was decided to reuse plain confidence rather than posterior
+  entropy, nothing downstream needs more than one float per position. No
+  implementation existed yet when this was simplified, so it's a free
+  edit, not a breaking change.
+- **Interface:**
+```python
+  class FreePhoneRecognizer(Protocol):
+      def decode(self, audio: bytes) -> tuple[list[str], list[float], list[tuple[int, int]]]: ...
+```
+
+**5c'. Alignment** (`stages/speech_assessment/align.py::align_phonemes`) — IMPLEMENTED
+- **Input:** `canonical_phonemes: list[str], unit_ids: list[str]` (parallel
+  array — `unit_ids[i]` is the `PronunciationUnit.id` owning
+  `canonical_phonemes[i]`), plus the three parallel outputs of
+  `FreePhoneRecognizer.decode()`.
+- **Output:** `list[AlignmentOp]`, one per operation in canonical order.
+- **Mechanism:** classic Levenshtein DP, equal weights
+  (sub_cost=del_cost=ins_cost=1). Backtrace tie-break order: diagonal
+  (match/substitution) > deletion > insertion — deterministic by
+  construction, and this ordering makes a single real mispronunciation
+  resolve as one substitution rather than a cheaper-looking
+  deletion+insertion pair for the same event.
+- **unit_id attribution:** match/substitution/deletion inherit the
+  `unit_ids` entry of the canonical phoneme they consume. insertion (no
+  canonical counterpart) attaches to the preceding op's unit_id by
+  convention (product decision — surfacing "an extra sound was added
+  here" matters more than pinpointing which word); an insertion before
+  anything else attaches to the first unit.
+- Replaces D20's count-based phoneme-to-unit grouping outright — counting
+  no longer works once insertions/deletions can change sequence length.
+
+**5d'. Scoring** (`stages/speech_assessment/scoring.py::score_alignment_op`) — IMPLEMENTED
+- **Input:** one `AlignmentOp`, plus `phone_stats`/`fallback_phone_class`.
+- **Output:** `accuracy_score: int` (0–100), wrapped with the `AlignmentOp`
+  into a `ScoredAlignmentOp`.
+- **Mechanism, per op_type:**
+  - `match`: `calibrate_score` (Decision Log D11), reused verbatim — only
+    the input renamed from `raw_gop` to `raw_value`.
+  - `substitution` / `insertion`: `100 * (1 - confidence)` — not
+    calibrated, since native speech has no substitutions/insertions to
+    build a reference distribution from.
+  - `deletion`: always `0`.
+
+**5e'. Merge** (`stages/speech_assessment/merge.py::merge_to_unit_result`) — IMPLEMENTED
+- **Input:** `unit_id: str, ops: list[AlignmentOp]` (all sharing that
+  unit_id — checked), plus `phone_stats`/`fallback_phone_class`.
+- **Output:** `UnitResult`, `calibrated_score` = MEAN of every op's
+  `accuracy_score` (Decision Log D33's choice, carried over unchanged).
+- `feedback_text` is currently always `""` — see 5f' below.
+
+**5f'. Feedback** (`stages/speech_assessment/feedback.py::generate_feedback`) — IMPLEMENTED
+- **Input:** `calibrated_score: int` (unit's MEAN, from 5e'),
+  `scored_ops: list[ScoredAlignmentOp]`.
+- **Output:** `feedback_text: str`.
+- **Mechanism:** an overview sentence (D32's 85/60/0 boundaries, applied to
+  `calibrated_score`) always comes first — even for a unit with a single,
+  purely structural op. Then, if present: one sentence naming all
+  deletions, one naming all insertions, one naming all substitutions (in
+  that order) — each stated explicitly (which sound was missing/extra/
+  wrong), not bucketed by score. Finally, D32's bracket-grouped sentences
+  (good/close/needs-work) apply ONLY to `match` ops — substitution/
+  insertion/deletion bypass bracketing entirely, since alignment already
+  gives more specific information than a score bracket would preserve.
+- See Decision Log D41.
 ---
 
 ## Codebase structure
@@ -279,11 +360,21 @@ paulou/
       azure_tts.py           # implements TTSProvider
     speech_assessment/
       free_decode/
-        wav2vec2_cnam.py      # implements FreePhoneRecognizer
-      align.py                # pure — Levenshtein DEL/INS
-      merge.py                # pure — not yet designed in detail
-      calibration.py          # pure
-      feedback.py             # pure
+        wav2vec2_cnam.py      # implements FreePhoneRecognizer — Stage B,
+                               # not yet built; signature simplified per
+                               # Decision Log D36 (confidence + boundaries,
+                               # not full posterior — see stage 5b')
+      align.py                # pure — align_phonemes, 3-way Levenshtein
+                               # (match/substitution/insertion/deletion),
+                               # IMPLEMENTED per Decision Log D36
+      scoring.py               # pure — score_alignment_op, IMPLEMENTED
+                               # (new file, not in the original tree)
+      merge.py                # pure — merge_to_unit_result, IMPLEMENTED
+                               # (MEAN aggregation, Decision Log D33, reused)
+      calibration.py          # pure — calibrate_score, kept and reused
+                               # (renamed raw_gop -> raw_value, D36)
+      feedback.py             # pure — NOT YET IMPLEMENTED (deleted per
+                               # D36, redesign pending — see stage 5f')
   pipeline.py             # PaulouPipeline — single orchestration entry point
   backend/
     api/

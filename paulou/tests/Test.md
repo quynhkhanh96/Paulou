@@ -103,46 +103,142 @@ docstring and the Glossary's "Elision" entry).
 
 ---
 
+## `test_alignment.py`
+
+Tests `align_phonemes` in the new `stages/speech_assessment/align.py`
+(Decision Log D36's 3-way Levenshtein alignment, design not yet written
+up in the Decision Log). Runs the algorithm on directly-constructed
+canonical/decoded phoneme sequences — no real audio, `FreePhoneRecognizer`,
+or `PronunciationUnit`s involved; `unit_ids` is passed as a plain parallel
+array, exactly like a caller who's already flattened a chunk's units would.
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_all_match_when_sequences_are_identical` | Baseline: identical canonical and decoded sequences produce only `match` ops. | All ops are `match`; `confidence` passed through unchanged. |
+| `test_single_deletion_detected_for_dropped_liaison` | The worked "les amis" -> /leami/ example (liaison consonant dropped) — verifies the exact op sequence end to end. | `[match, match, deletion, match, match, match]`; the deletion op has `canonical_phoneme="z"`, `decoded_phoneme=None`, `confidence=None`. |
+| `test_single_real_error_resolves_as_substitution_not_delete_plus_insert` | Verify the equal-weights (1,1,1) tie-break: one real error is read as ONE substitution, not a costlier deletion+insertion pair for the same event. | `[substitution]`, not `[deletion, insertion]`. |
+| `test_substitution_and_trailing_insertion_together` | Combines a mid-sequence substitution with a trailing insertion in one alignment — verifies both are detected correctly together, not just in isolation. | Correct op sequence; substitution's `(canonical_phoneme, decoded_phoneme)` pair and insertion's fields match expectations. |
+| `test_insertion_attaches_to_preceding_unit_across_a_unit_boundary` | Verify the insertion-attribution convention: an inserted phone between two `PronunciationUnit`s attaches to the PRECEDING unit, not the following one. | Insertion's `unit_id` equals the unit ending just before it, not the one starting just after. |
+| `test_insertion_with_nothing_preceding_attaches_to_first_unit` | Edge case: an insertion at the very start of the chunk, before any canonical phoneme has been consumed. | Insertion's `unit_id` equals the first unit's id. |
+| `test_deletions_across_two_units_each_keep_their_own_unit_id` | Verify deletion attribution is per-phone, not collapsed to one unit, when an entire chunk goes undecoded across 2 units. | Each deletion's `unit_id` matches its own canonical phoneme's owning unit, in order. |
+| `test_raises_on_empty_canonical_phonemes` | Guard against a malformed chunk with nothing to align against. | Raises `ValueError`. |
+| `test_raises_on_unit_ids_length_mismatch` | Guard against a real integration bug: `unit_ids` must be the same length as `canonical_phonemes`. | Raises `ValueError`. |
+| `test_raises_on_decoded_lists_length_mismatch` | Guard against a real integration bug: `decoded_phonemes`, `decoded_confidences`, and `decoded_boundaries` must all be the same length. | Raises `ValueError`. |
+
 ## `test_calibration.py`
 
 Tests `calibrate_score` and `PhoneStats` in
 `stages/speech_assessment/calibration.py`, using synthetic stats tables
 (no real French corpus data exists yet — see Decision Log D24).
 
+**Resolved per Decision Log D36** (was an open question as of the previous
+version of this file): the module's math is kept and reused as-is for the
+new single free-decode + 3-way alignment pipeline, scoring `AlignmentOp`
+"match" ops (see `test_scoring.py` below) — only the parameter/field name
+changed, from `raw_gop` to `raw_value`, since this module no longer has
+anything to do with GOP. Test names below were updated to match
+(`test_raw_gop_*` -> `test_raw_value_*`); the assertions themselves are
+unchanged.
+
 | Test | Purpose | Expected outcome |
 |---|---|---|
-| `test_raw_gop_equal_to_mean_gives_score_50` | Verify the z-score/CDF formula at its center point (`z=0`). | `score == 50`. |
-| `test_raw_gop_far_below_mean_gives_low_score` | Verify a native-atypical (poor) pronunciation yields a low score. | `score < 5`. |
-| `test_raw_gop_far_above_mean_gives_high_score` | Verify a very native-like pronunciation yields a high score. | `score > 95`. |
-| `test_score_is_clamped_to_0_100_range` | Verify the final score is always clamped to `[0, 100]`, even for extreme raw GOP values. | `high == 100`, `low == 0`. |
+| `test_raw_value_equal_to_mean_gives_score_50` | Verify the z-score/CDF formula at its center point (`z=0`). | `score == 50`. |
+| `test_raw_value_far_below_mean_gives_low_score` | Verify a native-atypical (poor) pronunciation yields a low score. | `score < 5`. |
+| `test_raw_value_far_above_mean_gives_high_score` | Verify a very native-like pronunciation yields a high score. | `score > 95`. |
+| `test_score_is_clamped_to_0_100_range` | Verify the final score is always clamped to `[0, 100]`, even for extreme raw values. | `high == 100`, `low == 0`. |
 | `test_missing_phone_with_no_fallback_raises` | Verify the function fails loudly rather than guessing when a phone has no stats and no fallback. | Raises `ValueError`. |
 | `test_undersampled_phone_falls_back_to_broader_class` | Verify the D11 fallback-to-broader-phone-class mechanism actually uses the fallback's stats, not the undersampled phone's own. | Score computed from the fallback class's mean (`0.0`), i.e. `50` — not from the undersampled phone's own mean (`-5.0`). |
 | `test_undersampled_phone_without_fallback_uses_its_own_stats_anyway` | Verify the soft-degradation policy: use what data exists rather than hard-failing when there's no better option. | Score computed from the phone's own (undersampled) stats. |
 | `test_zero_std_does_not_crash` | Guard against division-by-zero on a degenerate (`std=0`) distribution. | `z` forced to `0.0`; `score == 50`; no exception. |
 
-**Status note (Decision Log D36):** the two-branch Speech Assessment design
-this file was written for (GOP forced-align + free-decode) has been
-replaced by a single free-decode + 3-way alignment pipeline. Unlike the
-four sections removed below, this file and its underlying
-`calibration.py` are kept for now — the z-score/percentile math itself
-isn't GOP-specific, and may be reused for calibrating a confidence-based
-score once the replacement pipeline's `AlignmentOp` design is settled.
-Whether it survives as-is (just a renamed parameter) or gets replaced too
-is still an open question — not resolved yet.
+---
+
+## `test_scoring.py`
+
+Tests `score_alignment_op` in the new `stages/speech_assessment/
+scoring.py` (Decision Log D36's replacement scoring mechanism, design not
+yet written up in the Decision Log). Kept deliberately separate from the
+alignment algorithm itself (same D34-style reasoning: alignment is
+structural, scoring is policy) — uses directly-constructed `AlignmentOp`s
+via a `_op(...)` test helper, not a real aligner or free-phone recognizer
+output.
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_deletion_scores_zero` | Verify a `deletion` op always scores 0, regardless of phone_stats. | `score == 0`. |
+| `test_deletion_ignores_missing_confidence` | Verify `deletion` (the one op_type allowed `confidence=None`) doesn't raise on that account. | `score == 0`, no exception. |
+| `test_match_delegates_to_calibrate_score` | Verify a `match` op's score equals calling `calibrate_score` directly with the same confidence/phone/stats — not a divergent inline copy of the formula. | Exact match to the direct `calibrate_score` call. |
+| `test_match_uses_canonical_phoneme_to_look_up_stats` | Documents the intended contract (canonical_phoneme, not decoded_phoneme, keys the stats lookup) — the two are equal for a match, so this doesn't distinguish the two possible implementations, but records the intent for future edits. | `score == 50` at `z=0`. |
+| `test_match_without_confidence_raises` | Guard against a malformed `match` op with no confidence. | Raises `ValueError`. |
+| `test_substitution_high_confidence_gives_low_score` | Verify the core substitution heuristic: a confident wrong guess scores low. | `confidence=0.9` -> `score == 10`. |
+| `test_substitution_low_confidence_gives_high_score` | Verify the inverse: a hesitant wrong guess scores higher. | `confidence=0.1` -> `score == 90`. |
+| `test_substitution_without_confidence_raises` | Guard against a malformed `substitution` op with no confidence. | Raises `ValueError`. |
+| `test_insertion_uses_same_formula_as_substitution` | Verify insertion and substitution deliberately share the same `100 * (1 - confidence)` formula. | Same score for the same confidence value, regardless of op_type. |
+| `test_insertion_without_confidence_raises` | Guard against a malformed `insertion` op with no confidence. | Raises `ValueError`. |
+| `test_unknown_op_type_raises` | Guard against an invalid `op_type` string reaching this function — `AlignmentOpType` is a `Literal`, not enforced at runtime by a plain dataclass. | Raises `ValueError`. |
 
 ---
 
-**Removed per Decision Log D36.** This section used to document
-`test_feedback_templates.py`, `test_phoneme_grouping.py`, `test_merge.py`,
-and `test_speech_assessment.py` — tests for `stages/speech_assessment/
-feedback.py`, `phoneme_grouping.py`, `merge.py`, and `speech_assessment.py`
-respectively. All four implementation files and their test files were
-deleted together: they were built entirely around the two-branch GOP/
-free-decode architecture (D9), which D36 replaced with a single
-free-decode + 3-way alignment pipeline. Their replacements aren't written
-yet — no `AlignmentOp` schema or confidence-based scoring mechanism exists
-to test against. See Decision Log D36 and the Roadmap's open design
-questions.
+## `test_merge.py`
+
+Tests `merge_to_unit_result` in the new `stages/speech_assessment/
+merge.py` — replaces the pre-D36 version (Architecture Spec stage 5e,
+Decision Log D33), keeping D33's MEAN-not-MIN choice but aggregating
+`ScoredAlignmentOp.accuracy_score` instead of `PhoneScore.calibrated_score`.
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_mean_aggregation_not_min` | Verify the D33 choice (MEAN, not MIN) still holds under the new input shape. | `(90+70+40)/3 = 66.67` rounds to `67`, not `40`. |
+| `test_mean_rounds_to_nearest_int` | Flags the same real gotcha as before: Python's `round()` uses round-half-to-even ("banker's rounding"). | `80.5` rounds to `80`, not `81`. |
+| `test_single_op_score_equals_that_op` | Sanity check for the trivial one-op case. | `calibrated_score` equals that op's own `accuracy_score`. |
+| `test_unit_id_and_scored_ops_pass_through_unchanged` | Verify `UnitResult.unit_id` and `.scored_ops` (each wrapping its original `AlignmentOp`) are passed through faithfully. | Exact match to what was passed in, including `is` identity on the wrapped op. |
+| `test_raises_on_empty_ops` | Guard against merging a unit with nothing to aggregate. | Raises `ValueError`. |
+| `test_raises_on_mismatched_unit_id` | NEW guard, not in the pre-D36 version: every op passed in must share the `unit_id` argument — a real integration bug otherwise. | Raises `ValueError`. |
+| `test_works_uniformly_across_all_four_op_types` | Verify no op-type special-casing — match/substitution/insertion/deletion all aggregate through the same MEAN, in one unit. | Correct per-op scores and overall MEAN. |
+| `test_feedback_text_matches_generate_feedback_output` | Verify `merge_to_unit_result` calls `generate_feedback` with the right arguments, not a divergent inline copy of the same logic (same reasoning as the pre-D36 version of this test). | `result.feedback_text` equals calling `generate_feedback` directly with the same score/ops. |
+
+---
+
+## `test_feedback_templates.py`
+
+Tests `generate_feedback` in the new `stages/speech_assessment/
+feedback.py` (Decision Log D36's replacement feedback design, not yet
+written up in the Decision Log). `match` ops keep the pre-D36 bracket
+grouping (Decision Log D32's idea); `substitution`/`insertion`/`deletion`
+each always get their own explicit sentence instead of being bucketed by
+score, since alignment already says exactly what happened.
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_all_match_good_bracket_singular` | Verify singular phrasing when exactly one match phone lands in the good bracket. | `"Overall: great job! Good pronunciation on the a sound!"` |
+| `test_all_match_good_bracket_plural` | Verify plural phrasing when 2+ match phones land in the good bracket. | `"...Good pronunciation on these sounds: a, m!"` |
+| `test_match_mixed_brackets_order_is_good_close_needs_work` | Verify match phones spread across all three brackets produce sentences in order (overall, good, close, needs-work). | Full 4-sentence string, exact match. |
+| `test_overall_sentence_boundaries` | Verify the overall-score bracket boundaries (85, 84, 60, 59, 0) each map to the correct overview sentence. | Each score's result starts with the expected overview sentence. |
+| `test_deletion_sentence_singular` | Verify singular deletion phrasing. | `"...Missing the z sound."` |
+| `test_deletion_sentence_plural` | Verify plural deletion phrasing. | Contains `"Missing these sounds: z, t."` |
+| `test_insertion_sentence_singular` | Verify singular insertion phrasing. | Contains `"Extra sound heard: ə."` |
+| `test_insertion_sentence_plural` | Verify plural insertion phrasing. | Contains `"Extra sounds heard: ə, s."` |
+| `test_substitution_sentence_singular` | Verify singular substitution phrasing (arrow notation, canonical→decoded). | Contains `"You substituted a sound: s→ʃ."` |
+| `test_substitution_sentence_plural` | Verify plural substitution phrasing. | Contains `"You substituted these sounds: s→ʃ, m→n."` |
+| `test_sentence_order_with_all_four_op_types` | Verify the full documented sentence order when a unit has all four op types at once: overview, deletion, insertion, substitution, then match brackets. | Full exact-match string in that order. |
+| `test_overview_sentence_appears_even_with_a_single_structural_error` | Product decision (confirmed explicitly, not assumed): the overview sentence is never considered redundant with a single specific-error sentence. | Both sentences present even for a one-op, all-deletion unit. |
+| `test_empty_scored_ops_raises` | Guard against generating feedback for a unit with nothing to describe. | Raises `ValueError`. |
+| `test_out_of_range_calibrated_score_raises` | Defensive validation for `calibrated_score` outside 0-100. | Raises `ValueError` for both `101` and `-1`. |
+
+---
+
+**Removed per Decision Log D36, not replaced (unlike the sections above).**
+This section used to document `test_phoneme_grouping.py` and
+`test_speech_assessment.py` — tests for `stages/speech_assessment/
+phoneme_grouping.py` and `speech_assessment.py`. Both were built around
+D20's count-based phoneme-to-unit grouping, which breaks once
+insertions/deletions can change sequence length: `align_phonemes` (see
+`test_alignment.py` above) now assigns `unit_id` during alignment itself,
+replacing `phoneme_grouping.py`'s job outright — there is no replacement
+file to write. A `speech_assessment.py`-equivalent orchestration function
+(wiring a real `FreePhoneRecognizer` through `align_phonemes` ->
+`merge_to_unit_result`) is Stage B work and hasn't been started — see the
+Roadmap.
 
 ---
 

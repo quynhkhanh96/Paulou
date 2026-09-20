@@ -25,7 +25,7 @@ Superseded by Decision Log D36 — the Branch 1/Branch 2 split this note describ
 2. **G2P + POS tagging** — Lexique383 + eSpeak-ng fallback, spaCy/Stanza POS tagging. Offline, testable via golden set.
 3. **Sentence parser (LLM chunking) + TTS** — lower technical risk, well-understood approach (LLM call + vendor API wrapper).
 4. **Diagnostic audio set + free-phone recognizer** — now MVP-blocking (Decision Log D36, was post-MVP). Build the diagnostic set (native/substitution/deletion/insertion) and validate canonicalizer bias BEFORE trusting the recognizer's output for scoring.
-5. **Alignment + scoring pure functions** — 3-way Levenshtein alignment, confidence-based scoring, merge, feedback. AlignmentOp schema and scoring mechanism not yet designed — see Open design questions.
+5. **Alignment + scoring pure functions** — 3-way Levenshtein alignment, confidence-based scoring, merge, feedback.
 6. **MVP complete at this point.**
 
 *(This ordering itself is a decision — see Decision Log if it changes.)*
@@ -37,9 +37,8 @@ Superseded by Decision Log D36 — the Branch 1/Branch 2 split this note describ
 - **Merge logic (Architecture Spec, stage 5e).** How GOP branch output (per-phone scores) and free-decode branch output (DEL/INS ops) combine into one `UnitResult` has not been designed in detail yet. This affects what `feedback.py` can actually say to the user when both branches disagree or only one applies.
 - **Async vs. synchronous scoring API** (Decision Log D15, tentative). Depends on GOP/free-decode latency benchmarking, which hasn't been run yet. Resolve after step 4 above produces working code to benchmark.
 - **UX flow beyond the two mocked screens.** Onboarding, how a user submits a sentence, what a post-practice review/summary looks like — only isolated chunk/unit-level practice screens have been sketched so far, not the surrounding flow.
-- **AlignmentOp schema for 3-way alignment** (Decision Log D36) — needs to represent match/substitution/insertion/deletion, and for match/substitution/deletion, which canonical PronunciationUnit it belongs to (insertions don't map to any canonical unit — open question: attach to the nearest unit, or handle separately).
-- **Confidence-based scoring mechanism** (Decision Log D36) — GOP's log-ratio doesn't apply; need a new way to turn "matched with confidence X" / "substituted" / "missing" / "extra" into a 0-100 score per unit.
 - **`PronunciationUnit.syllables` and `.note` have no owning stage.** No syllabifier and no pedagogical-note generator are designed anywhere in the Architecture Spec. `assemble_units` currently leaves both as empty placeholders (`[]`, `""`).
+- **Color-coded pronunciation visualization for Practice UI** (surfaced during AlignmentOp design, Decision Log D37) — using `AlignmentOp.op_type` and `start_ms`/`end_ms` to visually highlight a user's pronunciation: green for match, red for substitution, yellow for insertion, gray for deletion. Needs TWO complementary views, neither sufficient alone: (1) a CANONICAL text/IPA view (fixed, known in advance) — works for match/substitution/deletion (all three have a `canonical_phoneme` to color), but insertion has none, so it can only show as an inserted marker between two phonemes, not a colored existing character; (2) a DECODED AUDIO TIMELINE view (`start_ms`/`end_ms`, synced to playback) — works for match/substitution/insertion (all three have real time boundaries), but deletion has neither (both `None` by design — nothing was said, so there's no audio span to point at). Not designed further yet; depends on Practice UI (Architecture Spec stage 4) actually being built.
 
 ---
 
