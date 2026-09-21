@@ -34,5 +34,31 @@ class TTSProvider(Protocol):
     def synthesize(self, text: str, rate: float = 1.0) -> tuple[bytes, list[WordTiming]]: ...
 
 
+# Obsolete per Decision Log D36 (single free-decode + 3-way alignment
+# pipeline replaces the two-branch GOP/free-decode design). Kept dormant,
+# not deleted: still imports RawPhoneScore (core/models.py), which is
+# itself kept dormant for the same reason. FreePhoneRecognizer below is
+# the replacement — the sole model-backed interface for Speech Assessment
+# going forward.
 class GOPScorer(Protocol):
     def score(self, audio: bytes, canonical_phonemes: list[str]) -> list[RawPhoneScore]: ...
+
+
+class FreePhoneRecognizer(Protocol):
+    """Unconstrained phone recognition — no reference-sequence constraint,
+    unlike GOPScorer's forced-alignment. See Architecture Spec stage 5b'
+    and Decision Log D36/D37.
+
+    Returns, all the same length: the decoded phone sequence; each
+    position's confidence (the decoder's own top-1 probability there —
+    since the decoded phone at position j is itself the argmax of that
+    position's distribution, this already equals the max of the full
+    posterior, so there's no need to also return the full distribution);
+    and each position's (start_ms, end_ms) time boundary in the source
+    audio. Simplified from the Architecture Spec's original stage 5b
+    signature (which returned the full posterior per position) once
+    nothing downstream needed more than one float per position — see
+    Decision Log D37.
+    """
+
+    def decode(self, audio: bytes) -> tuple[list[str], list[float], list[tuple[int, int]]]: ...

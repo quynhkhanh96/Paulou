@@ -232,6 +232,11 @@ replacing the two-branch GOP/free-decode architecture
 **Consequence:** Resolves D32's flagged D36 consequence — bracket boundaries now apply ONLY to `match` ops, not to every phone regardless of op_type as D32 originally specified.
 **Status:** Locked in for MVP. Exact sentence wording (e.g. "You substituted a sound: s→ʃ") is a first draft, not user-tested — revisit if real usage suggests clearer phrasing.
 
+### D42 — Chunk-level orchestration (score_chunk) written as Stage A, not deferred to Stage B
+**Decision:** Added `stages/speech_assessment/speech_assessment.py::score_chunk` (wires a `FreePhoneRecognizer` through `align_phonemes` and `merge_chunk_results` to score a whole chunk in one call) and `core/interfaces.py::FreePhoneRecognizer` (the real Protocol, per D37's simplified signature — previously only specced in the Architecture Spec, not in code). `GOPScorer` in `core/interfaces.py` is now explicitly commented as dormant/obsolete alongside it.
+**Rationale:** `score_chunk` calls `FreePhoneRecognizer.decode()` — a model-backed dependency — but is fully testable via a stub implementing the Protocol (`_StubFreePhoneRecognizer`, same pattern as the pre-D36 `_StubGOPScorer`), with zero dependency on a real model existing. This was initially miscategorized as Stage B work in the turn that closed out D37-D41; the mistake was caught when checking whether `merge_to_unit_result` (unit-level only) and `align_phonemes` (chunk-level) actually connected end to end. Writing it now means Stage B is reduced to exactly what D36 always intended it to be: a real `FreePhoneRecognizer` implementation, and the diagnostic audio set to validate it (D10) — no orchestration glue left to write once a real model exists.
+**Status:** Locked in. Stage A (pure functions + stub-testable orchestration) is complete for the redesigned Speech Assessment pipeline.
+
 ---
 
 ## Engineering / codebase architecture

@@ -3,7 +3,7 @@ import pytest
 from core.models import AlignmentOp
 from stages.speech_assessment.calibration import PhoneStats
 from stages.speech_assessment.feedback import generate_feedback
-from stages.speech_assessment.merge import merge_to_unit_result
+from stages.speech_assessment.merge import merge_chunk_results, merge_to_unit_result
 from stages.speech_assessment.scoring import score_alignment_op
 
 STATS = {"a": PhoneStats(mean=0.0, std=1.0, sample_size=100)}
@@ -104,3 +104,44 @@ def test_feedback_text_matches_generate_feedback_output():
         [ScoredAlignmentOp(op=op, accuracy_score=score) for op, score in scored],
     )
     assert result.feedback_text == expected
+
+
+def test_merge_chunk_results_groups_by_unit_preserving_order():
+    ops = [
+        _op("match", unit_id="u0", confidence=1.0),
+        _op("match", unit_id="u0", confidence=1.0),
+        _op("substitution", unit_id="u1", confidence=0.5),
+    ]
+    results = merge_chunk_results(ops, phone_stats=STATS)
+    assert [r.unit_id for r in results] == ["u0", "u1"]
+
+
+def test_merge_chunk_results_matches_calling_merge_to_unit_result_per_unit():
+    ops = [
+        _op("match", unit_id="u0", confidence=1.0),
+        _op("substitution", unit_id="u1", confidence=0.5),
+    ]
+    results = merge_chunk_results(ops, phone_stats=STATS)
+    expected_u0 = merge_to_unit_result("u0", [ops[0]], phone_stats=STATS)
+    expected_u1 = merge_to_unit_result("u1", [ops[1]], phone_stats=STATS)
+    assert results[0] == expected_u0
+    assert results[1] == expected_u1
+
+
+def test_merge_chunk_results_handles_non_contiguous_ops_for_same_unit():
+    # u0's two ops are NOT adjacent in the list — must still end up in the
+    # same UnitResult, not be split into two groups.
+    ops = [
+        _op("match", unit_id="u0", confidence=1.0),
+        _op("substitution", unit_id="u1", confidence=0.5),
+        _op("match", unit_id="u0", confidence=1.0),
+    ]
+    results = merge_chunk_results(ops, phone_stats=STATS)
+    assert [r.unit_id for r in results] == ["u0", "u1"]
+    assert len(results[0].scored_ops) == 2
+    assert len(results[1].scored_ops) == 1
+
+
+def test_merge_chunk_results_raises_on_empty_ops():
+    with pytest.raises(ValueError):
+        merge_chunk_results([], phone_stats=STATS)

@@ -227,18 +227,32 @@ score, since alignment already says exactly what happened.
 
 ---
 
-**Removed per Decision Log D36, not replaced (unlike the sections above).**
-This section used to document `test_phoneme_grouping.py` and
-`test_speech_assessment.py` — tests for `stages/speech_assessment/
-phoneme_grouping.py` and `speech_assessment.py`. Both were built around
-D20's count-based phoneme-to-unit grouping, which breaks once
-insertions/deletions can change sequence length: `align_phonemes` (see
-`test_alignment.py` above) now assigns `unit_id` during alignment itself,
-replacing `phoneme_grouping.py`'s job outright — there is no replacement
-file to write. A `speech_assessment.py`-equivalent orchestration function
-(wiring a real `FreePhoneRecognizer` through `align_phonemes` ->
-`merge_to_unit_result`) is Stage B work and hasn't been started — see the
-Roadmap.
+## `test_speech_assessment.py`
+
+Tests `score_chunk` and `_build_canonical_sequence` in the new
+`stages/speech_assessment/speech_assessment.py` — the chunk-level
+orchestration entry point wiring a `FreePhoneRecognizer` through
+`align_phonemes` and `merge_chunk_results` (Decision Log D42). Uses a
+`_StubFreePhoneRecognizer` test double (same style as the pre-D36
+`_StubGOPScorer`) — no real model involved, so this stays a fast unit
+test despite exercising the full chunk-level flow end to end.
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_build_canonical_sequence_flattens_units_in_order` | Verify the helper that bridges `PronunciationUnit`s to `align_phonemes`'s flat inputs. | Correct concatenated `canonical_phonemes` and parallel `unit_ids`. |
+| `test_score_chunk_full_worked_example_dropped_liaison_and_substitution` | End-to-end regression test reproducing the exact worked example (a `single` "chat" unit scored perfectly, a `liaison_group` "les amis" unit with a dropped liaison, a substitution, and a trailing insertion) verified by direct execution during design discussion. | Exact `calibrated_score` and `feedback_text` for both units, matching the verified run. |
+| `test_score_chunk_passes_audio_through_to_recognizer_unchanged` | Guard against a real integration bug: the audio bytes given to `score_chunk` must reach `FreePhoneRecognizer.decode()` unchanged. | Stub's `received_audio` is the exact same object passed in. |
+| `test_score_chunk_raises_on_empty_units` | Guard against scoring a chunk with no units. | Raises `ValueError`. |
+
+---
+
+**Removed per Decision Log D36, not replaced.** This section used to
+document `test_phoneme_grouping.py` — tests for `stages/speech_assessment/
+phoneme_grouping.py`. Built around D20's count-based phoneme-to-unit
+grouping, which breaks once insertions/deletions can change sequence
+length: `align_phonemes` (see `test_alignment.py` above) now assigns
+`unit_id` during alignment itself, replacing `phoneme_grouping.py`'s job
+outright — there is no replacement file to write.
 
 ---
 
