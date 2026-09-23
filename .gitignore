@@ -73,6 +73,7 @@ tts_cache/
 # --- Experiments ---
 # Keep result summaries (json/md) tracked; ignore large raw run artifacts.
 paulou/experiments/results/**/*.wav
+paulou/experiments/results/**/*.mp3
 paulou/experiments/results/**/*.npy
 paulou/experiments/results/**/*.pt
 
