@@ -1,0 +1,152 @@
+{
+  "native/liaison_deletion_les_amis.wav": {
+    "sentence_text": "les amis",
+    "canonical_phonemes": [
+      "l",
+      "e",
+      "z",
+      "a",
+      "m",
+      "i"
+    ],
+    "perturbed_phonemes": [
+      "l",
+      "e",
+      "z",
+      "a",
+      "m",
+      "i"
+    ],
+    "perturbation_type": "deletion",
+    "target_index": 2,
+    "injected_phoneme": null,
+    "unit_ids": [
+      "u_les_amis",
+      "u_les_amis",
+      "u_les_amis",
+      "u_les_amis",
+      "u_les_amis",
+      "u_les_amis"
+    ],
+    "note": "Obligatoire liaison (determiner+noun) between 'les' and 'amis'; deleting the /z/ models the dominant real liaison error type (omission) per D43's SLA-literature review."
+  },
+  "deletion/liaison_deletion_les_amis.wav": {
+    "sentence_text": "les amis",
+    "canonical_phonemes": [
+      "l",
+      "e",
+      "z",
+      "a",
+      "m",
+      "i"
+    ],
+    "perturbed_phonemes": [
+      "l",
+      "e",
+      "a",
+      "m",
+      "i"
+    ],
+    "perturbation_type": "deletion",
+    "target_index": 2,
+    "injected_phoneme": null,
+    "unit_ids": [
+      "u_les_amis",
+      "u_les_amis",
+      "u_les_amis",
+      "u_les_amis",
+      "u_les_amis",
+      "u_les_amis"
+    ],
+    "note": "Obligatoire liaison (determiner+noun) between 'les' and 'amis'; deleting the /z/ models the dominant real liaison error type (omission) per D43's SLA-literature review."
+  },
+  "native/substitution_chat.wav": {
+    "sentence_text": "chat",
+    "canonical_phonemes": [
+      "ʃ",
+      "a"
+    ],
+    "perturbed_phonemes": [
+      "ʃ",
+      "a"
+    ],
+    "perturbation_type": "substitution",
+    "target_index": 0,
+    "injected_phoneme": "s",
+    "unit_ids": [
+      "u_chat",
+      "u_chat"
+    ],
+    "note": "Single-word substitution /ʃ/->/s/, no liaison involved — general phoneme_accuracy case, informed by L2-ARCTIC's substitution-dominant error distribution for ordinary (non-liaison) phoneme errors."
+  },
+  "substitution/substitution_chat.wav": {
+    "sentence_text": "chat",
+    "canonical_phonemes": [
+      "ʃ",
+      "a"
+    ],
+    "perturbed_phonemes": [
+      "s",
+      "a"
+    ],
+    "perturbation_type": "substitution",
+    "target_index": 0,
+    "injected_phoneme": "s",
+    "unit_ids": [
+      "u_chat",
+      "u_chat"
+    ],
+    "note": "Single-word substitution /ʃ/->/s/, no liaison involved — general phoneme_accuracy case, informed by L2-ARCTIC's substitution-dominant error distribution for ordinary (non-liaison) phoneme errors."
+  },
+  "native/liaison_insertion_un_heros.wav": {
+    "sentence_text": "un héros",
+    "canonical_phonemes": [
+      "œ̃",
+      "e",
+      "ʁ",
+      "o"
+    ],
+    "perturbed_phonemes": [
+      "œ̃",
+      "e",
+      "ʁ",
+      "o"
+    ],
+    "perturbation_type": "insertion",
+    "target_index": 1,
+    "injected_phoneme": "n",
+    "unit_ids": [
+      "u_un",
+      "u_heros",
+      "u_heros",
+      "u_heros"
+    ],
+    "note": "Interdite liaison (h-aspiré closed list, D21-D22) between 'un' and 'héros'; inserting /n/ anyway models a learner wrongly applying liaison in a forbidden context."
+  },
+  "insertion/liaison_insertion_un_heros.wav": {
+    "sentence_text": "un héros",
+    "canonical_phonemes": [
+      "œ̃",
+      "e",
+      "ʁ",
+      "o"
+    ],
+    "perturbed_phonemes": [
+      "œ̃",
+      "n",
+      "e",
+      "ʁ",
+      "o"
+    ],
+    "perturbation_type": "insertion",
+    "target_index": 1,
+    "injected_phoneme": "n",
+    "unit_ids": [
+      "u_un",
+      "u_heros",
+      "u_heros",
+      "u_heros"
+    ],
+    "note": "Interdite liaison (h-aspiré closed list, D21-D22) between 'un' and 'héros'; inserting /n/ anyway models a learner wrongly applying liaison in a forbidden context."
+  }
+}

@@ -77,6 +77,9 @@ paulou/experiments/results/**/*.mp3
 paulou/experiments/results/**/*.npy
 paulou/experiments/results/**/*.pt
 
+paulou/experiments/diagnostic_set/*.onnx
+paulou/experiments/diagnostic_set/*.onnx.json
+
 # --- Backend / DB ---
 *.sqlite3
 *.db

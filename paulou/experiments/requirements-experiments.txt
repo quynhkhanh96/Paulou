@@ -1,0 +1,12 @@
+# Dependencies for experiments/ tooling only — NOT tied to any registered
+# stage (Decision Log D43), so they don't belong in a stage-specific extras
+# group like the ones Codebase Conventions describes (e.g. paulou[gop-kaldi]).
+#
+# NOTE: this repo upload doesn't include the actual pyproject.toml/setup.py
+# at the repo root, so this file is a placeholder — once merged with the
+# real packaging config, fold these into a `paulou[experiments]` extras
+# group there (e.g. `pip install paulou[experiments]`) rather than keeping
+# a separate requirements file.
+
+piper-tts
+onnxruntime
