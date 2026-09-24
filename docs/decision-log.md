@@ -258,8 +258,7 @@ replacing the two-branch GOP/free-decode architecture
 - This diagnostic set is explicitly not the rigorous, multi-speaker, publication-grade set the Publication Plan calls for — that remains a separate, later task.
 - Weighting diagnostic cases toward deletion for liaison specifically, per the SLA literature above, is a deliberate departure from what a naive reading of general MDD literature (substitution-dominant) would suggest; if this weighting turns out to be wrong for this specific `FreePhoneRecognizer` model's failure modes, the case set may need rebalancing once real results come in.
 
-**Status:** Proposed — pending Khanh's local verification of a real Piper French voice before being fully locked in; the storage split, commit policy, extras group, and case-weighting rationale are agreed and locked in for MVP regardless of that outcome.
-
+**Status:** Locked in. Determinism and native-vs-perturbed signal separation verified locally (two consecutive runs with `noise_scale=0.0, noise_w_scale=0.0` produced identical durations per file, and all three perturbation types produced a distinct, consistent duration shift from their native counterpart).
 ---
 
 ## Engineering / codebase architecture
