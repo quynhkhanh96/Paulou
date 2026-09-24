@@ -33,10 +33,24 @@ from pathlib import Path
 
 import numpy as np
 from piper import PiperVoice
+from piper.config import SynthesisConfig
 
 from experiments.diagnostic_set.cases import DiagnosticCase, build_cases
 from experiments.diagnostic_set.perturbation import apply_perturbation
 from experiments.diagnostic_set.piper_phonemes import to_piper_phonemes
+
+# Piper's VITS decoder samples Gaussian noise INSIDE the ONNX graph itself
+# (noise_scale for the flow/decoder, noise_w_scale for the stochastic
+# duration predictor) unless told not to -- confirmed by reading
+# piper/voice.py::phoneme_ids_to_audio, which forwards these straight into
+# the model's `scales` input. Left at their voice-config defaults, the SAME
+# phoneme sequence produces a DIFFERENT-duration audio clip on every call,
+# which defeats the point of a pinned diagnostic fixture (D43) -- this is
+# what caused native and deletion/liaison_deletion_les_amis.wav to come out
+# with near-identical durations on one run despite differing by a whole
+# phoneme. Zeroing both gives a deterministic ("clean") rendering, which is
+# arguably more appropriate for a controlled diagnostic anyway.
+_DETERMINISTIC_SYNTHESIS = SynthesisConfig(noise_scale=0.0, noise_w_scale=0.0)
 
 
 def synthesize(voice: PiperVoice, phonemes: list[str]) -> tuple[np.ndarray, int]:
@@ -44,11 +58,12 @@ def synthesize(voice: PiperVoice, phonemes: list[str]) -> tuple[np.ndarray, int]
 
     Uses the low-level phonemes_to_ids -> phoneme_ids_to_audio path (see
     D43's Rationale) so the phoneme sequence used is EXACTLY the one we
-    built, with no text/G2P step in between.
+    built, with no text/G2P step in between. Noise is zeroed for
+    deterministic, reproducible output -- see _DETERMINISTIC_SYNTHESIS above.
     """
     piper_phonemes = to_piper_phonemes(phonemes)
     phoneme_ids = voice.phonemes_to_ids(piper_phonemes)
-    audio = voice.phoneme_ids_to_audio(phoneme_ids)
+    audio = voice.phoneme_ids_to_audio(phoneme_ids, syn_config=_DETERMINISTIC_SYNTHESIS)
     if isinstance(audio, tuple):
         audio = audio[0]  # alignments not requested, but guard anyway
     return audio, voice.config.sample_rate
