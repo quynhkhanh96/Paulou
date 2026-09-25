@@ -11,7 +11,9 @@ suite, see `tests/` and `tests/README.md` instead.
 ```
 experiments/
   diagnostic_set/     # generates the D10 canonicalizer-bias diagnostic
-                       # audio set (native/substitution/deletion/insertion)
+                       # audio set (native/substitution/deletion/insertion) —
+                       # 12 cases across Tranche 1 (liaison) + Tranche 2
+                       # (broader error types), see Decision Log D43/D44
   runners/            # not yet built — comparative runs between candidate
                        # stage implementations (e.g. FreePhoneRecognizer
                        # candidates), see Codebase Conventions
@@ -38,16 +40,40 @@ installing the extras above does not remove that requirement.
 
 ## `diagnostic_set/` — generating the D10 diagnostic audio
 
+### Downloading a voice model
+
+Not committed to the repo (large, third-party, reproducible from source —
+same reasoning as `Lexique400.tsv`, D30). List available French voices,
+then download one into this same directory:
+
 ```bash
-python -m experiments.diagnostic_set.build_diagnostic_audio \
-    --model <path>/fr_FR-siwis-medium.onnx \
-    --config <path>/fr_FR-siwis-medium.onnx.json
+python -m piper.download_voices | grep fr_FR
+python -m piper.download_voices fr_FR-siwis-medium \
+    --download-dir experiments/diagnostic_set/
 ```
 
-This synthesizes native + perturbed audio for each case defined in
-`cases.py` and writes them, plus `metadata.json`, under
-`experiments/results/diagnostic_set/` by default. See Decision Log D43 for
-why Piper (not Azure/edge-tts/real recordings) and why this location.
+This writes `<voice>.onnx` and `<voice>.onnx.json` — both git-ignored (see
+"What gets committed" below).
+
+### Generating the audio
+
+```bash
+python -m experiments.diagnostic_set.build_diagnostic_audio \
+    --model experiments/diagnostic_set/fr_FR-siwis-medium.onnx \
+    --config experiments/diagnostic_set/fr_FR-siwis-medium.onnx.json
+```
+
+This synthesizes native + perturbed audio for each of the 12 cases defined
+in `cases.py` and writes them, plus `metadata.json`, under
+`experiments/results/diagnostic_set/` by default. See [`CASES.md`](diagnostic_set/CASES.md) for a
+human-readable catalog of what each case tests; see Decision Log D43 for
+why Piper (not Azure/edge-tts/real recordings) and why this location; see
+D44 for the synthesis parameters (`noise_scale`/`noise_w_scale`, zeroed by
+default in the script) and the word-boundary pause technique.
+
+Pass `--length-scale 1.0` for the model's normal speaking pace (the script
+defaults to 1.3x slower, to make a single changed phoneme easier to verify
+by ear — see D44).
 
 Two smaller modules can be run standalone, with no voice model needed, to
 sanity-check the case definitions and phoneme-format conversion:
@@ -71,6 +97,9 @@ the fixture used by `tests/model/`.
 
 ## What gets committed
 
+- `experiments/diagnostic_set/*.onnx`, `*.onnx.json` — **git-ignored**.
+  Downloaded voice models, reproducible via the download command above
+  (same reasoning as `Lexique400.tsv`, D30).
 - `experiments/results/**/*.wav`, `*.mp3` — **git-ignored**. Reproducible,
   one-off exploration output.
 - `experiments/results/**/*.json`, `*.md` — **committed**. Per Codebase

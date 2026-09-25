@@ -50,20 +50,41 @@ from experiments.diagnostic_set.piper_phonemes import to_piper_phonemes
 # with near-identical durations on one run despite differing by a whole
 # phoneme. Zeroing both gives a deterministic ("clean") rendering, which is
 # arguably more appropriate for a controlled diagnostic anyway.
-_DETERMINISTIC_SYNTHESIS = SynthesisConfig(noise_scale=0.0, noise_w_scale=0.0)
+#
+# length_scale is UNRELATED to determinism -- it's overall speaking rate
+# (1.0 = model's normal pace, higher = slower). Exposed as a CLI option and
+# defaulted slower than normal (see DEFAULT_LENGTH_SCALE_FOR_REVIEW below):
+# at the model's default pace, manually verifying a single deleted/inserted
+# phoneme by ear is genuinely harder than it needs to be. This is separate
+# from word_boundary_before below, which controls PAUSES (not overall
+# speed) at specific junctions.
+DEFAULT_LENGTH_SCALE_FOR_REVIEW = 1.3
 
 
-def synthesize(voice: PiperVoice, phonemes: list[str]) -> tuple[np.ndarray, int]:
+def synthesize(
+    voice: PiperVoice,
+    phonemes: list[str],
+    length_scale: float,
+    word_boundary_before: set[int] | None = None,
+) -> tuple[np.ndarray, int]:
     """Synthesize audio directly from a phoneme list, bypassing voice.phonemize().
 
     Uses the low-level phonemes_to_ids -> phoneme_ids_to_audio path (see
     D43's Rationale) so the phoneme sequence used is EXACTLY the one we
     built, with no text/G2P step in between. Noise is zeroed for
-    deterministic, reproducible output -- see _DETERMINISTIC_SYNTHESIS above.
+    deterministic, reproducible output; length_scale controls speaking rate
+    only. word_boundary_before inserts a word-boundary pause token at the
+    given phoneme indices -- used ONLY where two words are NOT connected by
+    an intact liaison in this specific rendering (see DiagnosticCase's
+    native_word_boundary_index / perturbed_word_boundary_index; never
+    within an actual liaison_group, per D35).
     """
-    piper_phonemes = to_piper_phonemes(phonemes)
+    syn_config = SynthesisConfig(
+        noise_scale=0.0, noise_w_scale=0.0, length_scale=length_scale
+    )
+    piper_phonemes = to_piper_phonemes(phonemes, word_boundary_before)
     phoneme_ids = voice.phonemes_to_ids(piper_phonemes)
-    audio = voice.phoneme_ids_to_audio(phoneme_ids, syn_config=_DETERMINISTIC_SYNTHESIS)
+    audio = voice.phoneme_ids_to_audio(phoneme_ids, syn_config=syn_config)
     if isinstance(audio, tuple):
         audio = audio[0]  # alignments not requested, but guard anyway
     return audio, voice.config.sample_rate
@@ -104,6 +125,15 @@ def main() -> None:
         help="Output dir (experiments/results/ during iteration, per D43 — "
              "NOT tests/fixtures/diagnostic_audio/ until a version is promoted)",
     )
+    parser.add_argument(
+        "--length-scale",
+        type=float,
+        default=DEFAULT_LENGTH_SCALE_FOR_REVIEW,
+        help=f"Speaking-rate multiplier (1.0 = model's normal pace, higher "
+             f"= slower). Defaults to {DEFAULT_LENGTH_SCALE_FOR_REVIEW} to "
+             f"make a single deleted/inserted phoneme easier to verify by "
+             f"ear; pass --length-scale 1.0 for normal pace.",
+    )
     args = parser.parse_args()
 
     voice = PiperVoice.load(args.model, config_path=args.config)
@@ -117,18 +147,22 @@ def main() -> None:
     for case in build_cases():
         # Check this VOICE's actual phoneme_id_map, not just the DEFAULT one
         # (see D43 Tradeoffs — the two are not guaranteed identical).
-        for label, phonemes in [
-            ("native", case.canonical_phonemes),
-            (case.perturbation_type, apply_perturbation(case)),
+        for label, phonemes, boundary_index in [
+            ("native", case.canonical_phonemes, case.native_word_boundary_index),
+            (case.perturbation_type, apply_perturbation(case),
+             case.perturbed_word_boundary_index),
         ]:
-            piper_phonemes = to_piper_phonemes(phonemes)
+            word_boundary_before = {boundary_index} if boundary_index is not None else None
+            piper_phonemes = to_piper_phonemes(phonemes, word_boundary_before)
             missing = [p for p in piper_phonemes if p not in voice.config.phoneme_id_map]
             if missing:
                 print(f"SKIPPING {case.case_id} [{label}]: phonemes missing from "
                       f"this voice's phoneme_id_map: {missing}")
                 continue
 
-            audio, sample_rate = synthesize(voice, phonemes)
+            audio, sample_rate = synthesize(
+                voice, phonemes, args.length_scale, word_boundary_before
+            )
             subdir = "native" if label == "native" else case.perturbation_type
             filename = f"{case.case_id}.wav"
             wav_path = out_dir / subdir / filename

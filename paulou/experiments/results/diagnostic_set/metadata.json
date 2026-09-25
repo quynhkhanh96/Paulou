@@ -148,5 +148,529 @@
       "u_heros"
     ],
     "note": "Interdite liaison (h-aspiré closed list, D21-D22) between 'un' and 'héros'; inserting /n/ anyway models a learner wrongly applying liaison in a forbidden context."
+  },
+  "native/liaison_deletion_petit_ami.wav": {
+    "sentence_text": "petit ami",
+    "canonical_phonemes": [
+      "p",
+      "ə",
+      "t",
+      "i",
+      "t",
+      "a",
+      "m",
+      "i"
+    ],
+    "perturbed_phonemes": [
+      "p",
+      "ə",
+      "t",
+      "i",
+      "t",
+      "a",
+      "m",
+      "i"
+    ],
+    "perturbation_type": "deletion",
+    "target_index": 4,
+    "injected_phoneme": null,
+    "unit_ids": [
+      "u_petit_ami",
+      "u_petit_ami",
+      "u_petit_ami",
+      "u_petit_ami",
+      "u_petit_ami",
+      "u_petit_ami",
+      "u_petit_ami",
+      "u_petit_ami"
+    ],
+    "note": "Obligatoire liaison (adjective before noun) between 'petit' and 'ami'; deleting the /t/ diversifies the liaison-consonant coverage beyond the /z/ case (les amis)."
+  },
+  "deletion/liaison_deletion_petit_ami.wav": {
+    "sentence_text": "petit ami",
+    "canonical_phonemes": [
+      "p",
+      "ə",
+      "t",
+      "i",
+      "t",
+      "a",
+      "m",
+      "i"
+    ],
+    "perturbed_phonemes": [
+      "p",
+      "ə",
+      "t",
+      "i",
+      "a",
+      "m",
+      "i"
+    ],
+    "perturbation_type": "deletion",
+    "target_index": 4,
+    "injected_phoneme": null,
+    "unit_ids": [
+      "u_petit_ami",
+      "u_petit_ami",
+      "u_petit_ami",
+      "u_petit_ami",
+      "u_petit_ami",
+      "u_petit_ami",
+      "u_petit_ami",
+      "u_petit_ami"
+    ],
+    "note": "Obligatoire liaison (adjective before noun) between 'petit' and 'ami'; deleting the /t/ diversifies the liaison-consonant coverage beyond the /z/ case (les amis)."
+  },
+  "native/liaison_deletion_les_anciens_amis_chain.wav": {
+    "sentence_text": "les anciens amis",
+    "canonical_phonemes": [
+      "l",
+      "e",
+      "z",
+      "ɑ̃",
+      "s",
+      "j",
+      "ɛ̃",
+      "z",
+      "a",
+      "m",
+      "i"
+    ],
+    "perturbed_phonemes": [
+      "l",
+      "e",
+      "z",
+      "ɑ̃",
+      "s",
+      "j",
+      "ɛ̃",
+      "z",
+      "a",
+      "m",
+      "i"
+    ],
+    "perturbation_type": "deletion",
+    "target_index": 2,
+    "injected_phoneme": null,
+    "unit_ids": [
+      "u_les_anciens",
+      "u_les_anciens",
+      "u_les_anciens",
+      "u_les_anciens",
+      "u_les_anciens",
+      "u_les_anciens",
+      "u_les_anciens",
+      "u_anciens_amis",
+      "u_anciens_amis",
+      "u_anciens_amis",
+      "u_anciens_amis"
+    ],
+    "note": "Genuine liaison chain (D23's own worked example): les|anciens and anciens|amis are BOTH obligatoire. Deletes only the FIRST /z/, keeping the second /z/ intact, to test whether a correct liaison right next to a deleted one is still read correctly. unit_id assignment is a flagged simplification -- see docstring, does not resolve D23's own open ambiguity."
+  },
+  "deletion/liaison_deletion_les_anciens_amis_chain.wav": {
+    "sentence_text": "les anciens amis",
+    "canonical_phonemes": [
+      "l",
+      "e",
+      "z",
+      "ɑ̃",
+      "s",
+      "j",
+      "ɛ̃",
+      "z",
+      "a",
+      "m",
+      "i"
+    ],
+    "perturbed_phonemes": [
+      "l",
+      "e",
+      "ɑ̃",
+      "s",
+      "j",
+      "ɛ̃",
+      "z",
+      "a",
+      "m",
+      "i"
+    ],
+    "perturbation_type": "deletion",
+    "target_index": 2,
+    "injected_phoneme": null,
+    "unit_ids": [
+      "u_les_anciens",
+      "u_les_anciens",
+      "u_les_anciens",
+      "u_les_anciens",
+      "u_les_anciens",
+      "u_les_anciens",
+      "u_les_anciens",
+      "u_anciens_amis",
+      "u_anciens_amis",
+      "u_anciens_amis",
+      "u_anciens_amis"
+    ],
+    "note": "Genuine liaison chain (D23's own worked example): les|anciens and anciens|amis are BOTH obligatoire. Deletes only the FIRST /z/, keeping the second /z/ intact, to test whether a correct liaison right next to a deleted one is still read correctly. unit_id assignment is a flagged simplification -- see docstring, does not resolve D23's own open ambiguity."
+  },
+  "native/liaison_insertion_et_amis.wav": {
+    "sentence_text": "et amis",
+    "canonical_phonemes": [
+      "e",
+      "a",
+      "m",
+      "i"
+    ],
+    "perturbed_phonemes": [
+      "e",
+      "a",
+      "m",
+      "i"
+    ],
+    "perturbation_type": "insertion",
+    "target_index": 1,
+    "injected_phoneme": "z",
+    "unit_ids": [
+      "u_et",
+      "u_amis",
+      "u_amis",
+      "u_amis"
+    ],
+    "note": "Interdite liaison (after 'et', always blocked) between 'et' and 'amis'; inserting /z/ anyway models a learner wrongly applying liaison after 'et' -- a DIFFERENT interdite rule than the existing h-aspiré case (un héros)."
+  },
+  "insertion/liaison_insertion_et_amis.wav": {
+    "sentence_text": "et amis",
+    "canonical_phonemes": [
+      "e",
+      "a",
+      "m",
+      "i"
+    ],
+    "perturbed_phonemes": [
+      "e",
+      "z",
+      "a",
+      "m",
+      "i"
+    ],
+    "perturbation_type": "insertion",
+    "target_index": 1,
+    "injected_phoneme": "z",
+    "unit_ids": [
+      "u_et",
+      "u_amis",
+      "u_amis",
+      "u_amis"
+    ],
+    "note": "Interdite liaison (after 'et', always blocked) between 'et' and 'amis'; inserting /z/ anyway models a learner wrongly applying liaison after 'et' -- a DIFFERENT interdite rule than the existing h-aspiré case (un héros)."
+  },
+  "native/final_consonant_deletion_table.wav": {
+    "sentence_text": "table",
+    "canonical_phonemes": [
+      "t",
+      "a",
+      "b",
+      "l"
+    ],
+    "perturbed_phonemes": [
+      "t",
+      "a",
+      "b",
+      "l"
+    ],
+    "perturbation_type": "deletion",
+    "target_index": 3,
+    "injected_phoneme": null,
+    "unit_ids": [
+      "u_table",
+      "u_table",
+      "u_table",
+      "u_table"
+    ],
+    "note": "Final-consonant deletion (non-liaison): 'table' -> 'tab', deleting the word-final /l/."
+  },
+  "deletion/final_consonant_deletion_table.wav": {
+    "sentence_text": "table",
+    "canonical_phonemes": [
+      "t",
+      "a",
+      "b",
+      "l"
+    ],
+    "perturbed_phonemes": [
+      "t",
+      "a",
+      "b"
+    ],
+    "perturbation_type": "deletion",
+    "target_index": 3,
+    "injected_phoneme": null,
+    "unit_ids": [
+      "u_table",
+      "u_table",
+      "u_table",
+      "u_table"
+    ],
+    "note": "Final-consonant deletion (non-liaison): 'table' -> 'tab', deleting the word-final /l/."
+  },
+  "native/final_consonant_deletion_porte.wav": {
+    "sentence_text": "porte",
+    "canonical_phonemes": [
+      "p",
+      "ɔ",
+      "ʁ",
+      "t"
+    ],
+    "perturbed_phonemes": [
+      "p",
+      "ɔ",
+      "ʁ",
+      "t"
+    ],
+    "perturbation_type": "deletion",
+    "target_index": 3,
+    "injected_phoneme": null,
+    "unit_ids": [
+      "u_porte",
+      "u_porte",
+      "u_porte",
+      "u_porte"
+    ],
+    "note": "Final-consonant deletion (non-liaison): 'porte' -> 'pɔʁ', deleting the word-final /t/."
+  },
+  "deletion/final_consonant_deletion_porte.wav": {
+    "sentence_text": "porte",
+    "canonical_phonemes": [
+      "p",
+      "ɔ",
+      "ʁ",
+      "t"
+    ],
+    "perturbed_phonemes": [
+      "p",
+      "ɔ",
+      "ʁ"
+    ],
+    "perturbation_type": "deletion",
+    "target_index": 3,
+    "injected_phoneme": null,
+    "unit_ids": [
+      "u_porte",
+      "u_porte",
+      "u_porte",
+      "u_porte"
+    ],
+    "note": "Final-consonant deletion (non-liaison): 'porte' -> 'pɔʁ', deleting the word-final /t/."
+  },
+  "native/weak_cluster_deletion_spectacle.wav": {
+    "sentence_text": "spectacle",
+    "canonical_phonemes": [
+      "s",
+      "p",
+      "ɛ",
+      "k",
+      "t",
+      "a",
+      "k",
+      "l"
+    ],
+    "perturbed_phonemes": [
+      "s",
+      "p",
+      "ɛ",
+      "k",
+      "t",
+      "a",
+      "k",
+      "l"
+    ],
+    "perturbation_type": "deletion",
+    "target_index": 3,
+    "injected_phoneme": null,
+    "unit_ids": [
+      "u_spectacle",
+      "u_spectacle",
+      "u_spectacle",
+      "u_spectacle",
+      "u_spectacle",
+      "u_spectacle",
+      "u_spectacle",
+      "u_spectacle"
+    ],
+    "note": "Weak-cluster deletion (non-liaison): 'spectacle' -> 'spɛtakl', deleting the first /k/ inside the k-t-a-k-l cluster."
+  },
+  "deletion/weak_cluster_deletion_spectacle.wav": {
+    "sentence_text": "spectacle",
+    "canonical_phonemes": [
+      "s",
+      "p",
+      "ɛ",
+      "k",
+      "t",
+      "a",
+      "k",
+      "l"
+    ],
+    "perturbed_phonemes": [
+      "s",
+      "p",
+      "ɛ",
+      "t",
+      "a",
+      "k",
+      "l"
+    ],
+    "perturbation_type": "deletion",
+    "target_index": 3,
+    "injected_phoneme": null,
+    "unit_ids": [
+      "u_spectacle",
+      "u_spectacle",
+      "u_spectacle",
+      "u_spectacle",
+      "u_spectacle",
+      "u_spectacle",
+      "u_spectacle",
+      "u_spectacle"
+    ],
+    "note": "Weak-cluster deletion (non-liaison): 'spectacle' -> 'spɛtakl', deleting the first /k/ inside the k-t-a-k-l cluster."
+  },
+  "native/substitution_bonjour.wav": {
+    "sentence_text": "bonjour",
+    "canonical_phonemes": [
+      "b",
+      "ɔ̃",
+      "ʒ",
+      "u",
+      "ʁ"
+    ],
+    "perturbed_phonemes": [
+      "b",
+      "ɔ̃",
+      "ʒ",
+      "u",
+      "ʁ"
+    ],
+    "perturbation_type": "substitution",
+    "target_index": 1,
+    "injected_phoneme": "ɑ̃",
+    "unit_ids": [
+      "u_bonjour",
+      "u_bonjour",
+      "u_bonjour",
+      "u_bonjour",
+      "u_bonjour"
+    ],
+    "note": "Nasal-vowel substitution /ɔ̃/->/ɑ̃/ in 'bonjour' -- a classic learner confusion pair (Glossary: nasal vowels)."
+  },
+  "substitution/substitution_bonjour.wav": {
+    "sentence_text": "bonjour",
+    "canonical_phonemes": [
+      "b",
+      "ɔ̃",
+      "ʒ",
+      "u",
+      "ʁ"
+    ],
+    "perturbed_phonemes": [
+      "b",
+      "ɑ̃",
+      "ʒ",
+      "u",
+      "ʁ"
+    ],
+    "perturbation_type": "substitution",
+    "target_index": 1,
+    "injected_phoneme": "ɑ̃",
+    "unit_ids": [
+      "u_bonjour",
+      "u_bonjour",
+      "u_bonjour",
+      "u_bonjour",
+      "u_bonjour"
+    ],
+    "note": "Nasal-vowel substitution /ɔ̃/->/ɑ̃/ in 'bonjour' -- a classic learner confusion pair (Glossary: nasal vowels)."
+  },
+  "native/substitution_lune.wav": {
+    "sentence_text": "lune",
+    "canonical_phonemes": [
+      "l",
+      "y",
+      "n"
+    ],
+    "perturbed_phonemes": [
+      "l",
+      "y",
+      "n"
+    ],
+    "perturbation_type": "substitution",
+    "target_index": 1,
+    "injected_phoneme": "u",
+    "unit_ids": [
+      "u_lune",
+      "u_lune",
+      "u_lune"
+    ],
+    "note": "Oral-vowel substitution /y/->/u/ in 'lune' -- a well-known confusable pair for anglophone/many L2 learners."
+  },
+  "substitution/substitution_lune.wav": {
+    "sentence_text": "lune",
+    "canonical_phonemes": [
+      "l",
+      "y",
+      "n"
+    ],
+    "perturbed_phonemes": [
+      "l",
+      "u",
+      "n"
+    ],
+    "perturbation_type": "substitution",
+    "target_index": 1,
+    "injected_phoneme": "u",
+    "unit_ids": [
+      "u_lune",
+      "u_lune",
+      "u_lune"
+    ],
+    "note": "Oral-vowel substitution /y/->/u/ in 'lune' -- a well-known confusable pair for anglophone/many L2 learners."
+  },
+  "native/substitution_deux.wav": {
+    "sentence_text": "deux",
+    "canonical_phonemes": [
+      "d",
+      "ø"
+    ],
+    "perturbed_phonemes": [
+      "d",
+      "ø"
+    ],
+    "perturbation_type": "substitution",
+    "target_index": 1,
+    "injected_phoneme": "e",
+    "unit_ids": [
+      "u_deux",
+      "u_deux"
+    ],
+    "note": "Oral-vowel substitution /ø/->/e/ in 'deux' -- vowel-height merger, another common learner confusion."
+  },
+  "substitution/substitution_deux.wav": {
+    "sentence_text": "deux",
+    "canonical_phonemes": [
+      "d",
+      "ø"
+    ],
+    "perturbed_phonemes": [
+      "d",
+      "e"
+    ],
+    "perturbation_type": "substitution",
+    "target_index": 1,
+    "injected_phoneme": "e",
+    "unit_ids": [
+      "u_deux",
+      "u_deux"
+    ],
+    "note": "Oral-vowel substitution /ø/->/e/ in 'deux' -- vowel-height merger, another common learner confusion."
   }
 }
