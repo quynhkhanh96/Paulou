@@ -14,9 +14,8 @@ experiments/
                        # audio set (native/substitution/deletion/insertion) —
                        # 12 cases across Tranche 1 (liaison) + Tranche 2
                        # (broader error types), see Decision Log D43/D44
-  runners/            # not yet built — comparative runs between candidate
-                       # stage implementations (e.g. FreePhoneRecognizer
-                       # candidates), see Codebase Conventions
+  runners/            # canonicalizer_bias_check.py (D10/D46) and
+                       # compare_free_decoder.py (D45-D47) — see below
   notebooks/          # not yet built — qualitative review (chunking
                        # quality, audio playback, alignment visualization)
   results/            # output of runs above — see "What gets committed"
@@ -65,7 +64,7 @@ python -m experiments.diagnostic_set.build_diagnostic_audio \
 
 This synthesizes native + perturbed audio for each of the 12 cases defined
 in `cases.py` and writes them, plus `metadata.json`, under
-`experiments/results/diagnostic_set/` by default. See [`CASES.md`](diagnostic_set/CASES.md) for a
+`experiments/results/diagnostic_set/` by default. See `CASES.md` for a
 human-readable catalog of what each case tests; see Decision Log D43 for
 why Piper (not Azure/edge-tts/real recordings) and why this location; see
 D44 for the synthesis parameters (`noise_scale`/`noise_w_scale`, zeroed by
@@ -94,6 +93,43 @@ git-ignore that copy — see Decision Log D43 for why the pinned fixture is
 committed rather than regenerated from a script). Anything left behind
 under `experiments/results/diagnostic_set/` remains iteration history, not
 the fixture used by `tests/model/`.
+
+## `runners/` — running the D10 canonicalizer-bias check
+
+Requires the free-decode extras (`torch`, `transformers`, `soundfile` —
+not yet a formal `paulou[free-decode]` extras group, see D45's own note on
+this repo not having a `pyproject.toml`/`setup.py` yet):
+
+```bash
+pip install torch transformers soundfile
+```
+
+Run one recognizer against the promoted `tests/fixtures/diagnostic_audio/`
+set:
+
+```bash
+python -m experiments.runners.canonicalizer_bias_check --recognizer wav2vec2_cnam
+python -m experiments.runners.canonicalizer_bias_check --recognizer wav2vec2_bofenghuang
+```
+
+Compare multiple registered `free_decoder` candidates side by side:
+
+```bash
+python -m experiments.runners.compare_free_decoder \
+    --recognizers wav2vec2_cnam wav2vec2_bofenghuang
+```
+
+Both write their JSON report under `experiments/results/canonicalizer_bias/`
+— committed, like other `experiments/results/` JSON/markdown (see "What
+gets committed" below). See `experiments/results/canonicalizer_bias/RESULTS.md`
+for a human-readable summary of the actual run and its conclusion, and
+Decision Log D45-D47 for the full rationale and the verdict methodology.
+
+**If you add a new `FreePhoneRecognizer` implementation:** it must be
+importable from `stages/speech_assessment/free_decode/__init__.py` (add it
+to that file's import list) or `build("free_decoder", ...)` will raise
+`KeyError` — see D45's Tradeoff note on why this is needed (no
+`pipeline.py` exists yet to import implementations centrally).
 
 ## What gets committed
 

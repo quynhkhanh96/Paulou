@@ -1,0 +1,709 @@
+{
+  "wav2vec2_cnam": {
+    "per_case": {
+      "native/liaison_deletion_les_amis.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "l",
+          "e",
+          "z",
+          "a",
+          "m",
+          "i"
+        ],
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "deletion/liaison_deletion_les_amis.wav": {
+        "kind": "deletion",
+        "verdict": "honest",
+        "decoded_phonemes": [
+          "l",
+          "e",
+          "a",
+          "m",
+          "i"
+        ]
+      },
+      "native/substitution_chat.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "ʃ",
+          "ɛ̃"
+        ],
+        "match_rate": 0.5,
+        "anomalies": [
+          "substitution(canonical='a', decoded='ɛ̃')"
+        ]
+      },
+      "substitution/substitution_chat.wav": {
+        "kind": "substitution",
+        "verdict": "honest",
+        "decoded_phonemes": [
+          "s",
+          "a"
+        ]
+      },
+      "native/liaison_insertion_un_heros.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "œ̃",
+          "m",
+          "e",
+          "ʁ",
+          "o"
+        ],
+        "match_rate": 1.0,
+        "anomalies": [
+          "insertion(canonical=None, decoded='m')"
+        ]
+      },
+      "insertion/liaison_insertion_un_heros.wav": {
+        "kind": "insertion",
+        "verdict": "honest",
+        "decoded_phonemes": [
+          "œ̃",
+          "n",
+          "e",
+          "ʁ",
+          "o"
+        ]
+      },
+      "native/liaison_deletion_petit_ami.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "p",
+          "ə",
+          "t",
+          "i",
+          "t",
+          "a",
+          "m",
+          "i"
+        ],
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "deletion/liaison_deletion_petit_ami.wav": {
+        "kind": "deletion",
+        "verdict": "biased",
+        "decoded_phonemes": [
+          "p",
+          "ə",
+          "t",
+          "i",
+          "t",
+          "a",
+          "m",
+          "i"
+        ]
+      },
+      "native/liaison_deletion_les_anciens_amis_chain.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "l",
+          "e",
+          "z",
+          "ɑ̃",
+          "s",
+          "j",
+          "ɛ̃",
+          "z",
+          "a",
+          "m",
+          "i"
+        ],
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "deletion/liaison_deletion_les_anciens_amis_chain.wav": {
+        "kind": "deletion",
+        "verdict": "honest",
+        "decoded_phonemes": [
+          "l",
+          "e",
+          "ɑ̃",
+          "s",
+          "j",
+          "ɛ̃",
+          "z",
+          "a",
+          "m",
+          "i"
+        ]
+      },
+      "native/liaison_insertion_et_amis.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "e",
+          "a",
+          "m",
+          "i"
+        ],
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "insertion/liaison_insertion_et_amis.wav": {
+        "kind": "insertion",
+        "verdict": "honest",
+        "decoded_phonemes": [
+          "e",
+          "z",
+          "a",
+          "m",
+          "i"
+        ]
+      },
+      "native/final_consonant_deletion_table.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "t",
+          "a",
+          "b",
+          "l"
+        ],
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "deletion/final_consonant_deletion_table.wav": {
+        "kind": "deletion",
+        "verdict": "ambiguous",
+        "decoded_phonemes": [
+          "k",
+          "a",
+          "ʁ",
+          "ɑ̃"
+        ]
+      },
+      "native/final_consonant_deletion_porte.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "p",
+          "a",
+          "ʁ",
+          "t"
+        ],
+        "match_rate": 0.75,
+        "anomalies": [
+          "substitution(canonical='ɔ', decoded='a')"
+        ]
+      },
+      "deletion/final_consonant_deletion_porte.wav": {
+        "kind": "deletion",
+        "verdict": "honest",
+        "decoded_phonemes": [
+          "p",
+          "ɔ",
+          "ʁ"
+        ]
+      },
+      "native/weak_cluster_deletion_spectacle.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "s",
+          "p",
+          "ɛ",
+          "k",
+          "t",
+          "a",
+          "k",
+          "l"
+        ],
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "deletion/weak_cluster_deletion_spectacle.wav": {
+        "kind": "deletion",
+        "verdict": "biased",
+        "decoded_phonemes": [
+          "s",
+          "p",
+          "ɛ",
+          "k",
+          "t",
+          "a",
+          "k",
+          "l"
+        ]
+      },
+      "native/substitution_bonjour.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "b",
+          "ɔ̃",
+          "ʒ",
+          "u",
+          "ʁ"
+        ],
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "substitution/substitution_bonjour.wav": {
+        "kind": "substitution",
+        "verdict": "biased",
+        "decoded_phonemes": [
+          "b",
+          "ɔ̃",
+          "ʒ",
+          "u",
+          "ʁ"
+        ]
+      },
+      "native/substitution_lune.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "y",
+          "n"
+        ],
+        "match_rate": 0.6666666666666666,
+        "anomalies": [
+          "deletion(canonical='l', decoded=None)"
+        ]
+      },
+      "substitution/substitution_lune.wav": {
+        "kind": "substitution",
+        "verdict": "ambiguous",
+        "decoded_phonemes": [
+          "l",
+          "o",
+          "n"
+        ]
+      },
+      "native/substitution_deux.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "d",
+          "ø"
+        ],
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "substitution/substitution_deux.wav": {
+        "kind": "substitution",
+        "verdict": "honest",
+        "decoded_phonemes": [
+          "t",
+          "e"
+        ]
+      }
+    },
+    "verdict_counts": {
+      "honest": 7,
+      "biased": 3,
+      "ambiguous": 2
+    },
+    "bias_rate": 0.25,
+    "native_results": {
+      "native/liaison_deletion_les_amis.wav": {
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "native/substitution_chat.wav": {
+        "match_rate": 0.5,
+        "anomalies": [
+          "substitution(canonical='a', decoded='ɛ̃')"
+        ]
+      },
+      "native/liaison_insertion_un_heros.wav": {
+        "match_rate": 1.0,
+        "anomalies": [
+          "insertion(canonical=None, decoded='m')"
+        ]
+      },
+      "native/liaison_deletion_petit_ami.wav": {
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "native/liaison_deletion_les_anciens_amis_chain.wav": {
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "native/liaison_insertion_et_amis.wav": {
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "native/final_consonant_deletion_table.wav": {
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "native/final_consonant_deletion_porte.wav": {
+        "match_rate": 0.75,
+        "anomalies": [
+          "substitution(canonical='ɔ', decoded='a')"
+        ]
+      },
+      "native/weak_cluster_deletion_spectacle.wav": {
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "native/substitution_bonjour.wav": {
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "native/substitution_lune.wav": {
+        "match_rate": 0.6666666666666666,
+        "anomalies": [
+          "deletion(canonical='l', decoded=None)"
+        ]
+      },
+      "native/substitution_deux.wav": {
+        "match_rate": 1.0,
+        "anomalies": []
+      }
+    }
+  },
+  "wav2vec2_bofenghuang": {
+    "per_case": {
+      "native/liaison_deletion_les_amis.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "l",
+          "e",
+          "z",
+          "a",
+          "m",
+          "i"
+        ],
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "deletion/liaison_deletion_les_amis.wav": {
+        "kind": "deletion",
+        "verdict": "honest",
+        "decoded_phonemes": [
+          "l",
+          "e",
+          "a",
+          "m",
+          "i"
+        ]
+      },
+      "native/substitution_chat.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "ʃ",
+          "a"
+        ],
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "substitution/substitution_chat.wav": {
+        "kind": "substitution",
+        "verdict": "honest",
+        "decoded_phonemes": [
+          "s",
+          "a"
+        ]
+      },
+      "native/liaison_insertion_un_heros.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "œ̃",
+          "n",
+          "e",
+          "ʁ",
+          "o"
+        ],
+        "match_rate": 1.0,
+        "anomalies": [
+          "insertion(canonical=None, decoded='n')"
+        ]
+      },
+      "insertion/liaison_insertion_un_heros.wav": {
+        "kind": "insertion",
+        "verdict": "honest",
+        "decoded_phonemes": [
+          "œ̃",
+          "n",
+          "e",
+          "ʁ",
+          "o"
+        ]
+      },
+      "native/liaison_deletion_petit_ami.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "p",
+          "ə",
+          "t",
+          "i",
+          "t",
+          "a",
+          "m",
+          "i"
+        ],
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "deletion/liaison_deletion_petit_ami.wav": {
+        "kind": "deletion",
+        "verdict": "biased",
+        "decoded_phonemes": [
+          "p",
+          "ə",
+          "t",
+          "i",
+          "t",
+          "a",
+          "m",
+          "i"
+        ]
+      },
+      "native/liaison_deletion_les_anciens_amis_chain.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "l",
+          "e",
+          "z",
+          "ɑ̃",
+          "s",
+          "j",
+          "ɛ̃",
+          "z",
+          "a",
+          "m",
+          "i"
+        ],
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "deletion/liaison_deletion_les_anciens_amis_chain.wav": {
+        "kind": "deletion",
+        "verdict": "biased",
+        "decoded_phonemes": [
+          "l",
+          "e",
+          "z",
+          "ɑ̃",
+          "s",
+          "j",
+          "ɛ̃",
+          "z",
+          "a",
+          "m",
+          "i"
+        ]
+      },
+      "native/liaison_insertion_et_amis.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "e",
+          "a",
+          "m",
+          "i"
+        ],
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "insertion/liaison_insertion_et_amis.wav": {
+        "kind": "insertion",
+        "verdict": "honest",
+        "decoded_phonemes": [
+          "l",
+          "e",
+          "z",
+          "a",
+          "m",
+          "i"
+        ]
+      },
+      "native/final_consonant_deletion_table.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "t",
+          "a",
+          "b",
+          "l"
+        ],
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "deletion/final_consonant_deletion_table.wav": {
+        "kind": "deletion",
+        "verdict": "ambiguous",
+        "decoded_phonemes": [
+          "k",
+          "a",
+          "ʁ",
+          "a"
+        ]
+      },
+      "native/final_consonant_deletion_porte.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "p",
+          "a",
+          "ʁ",
+          "s"
+        ],
+        "match_rate": 0.5,
+        "anomalies": [
+          "substitution(canonical='ɔ', decoded='a')",
+          "substitution(canonical='t', decoded='s')"
+        ]
+      },
+      "deletion/final_consonant_deletion_porte.wav": {
+        "kind": "deletion",
+        "verdict": "honest",
+        "decoded_phonemes": [
+          "p",
+          "a",
+          "ʁ"
+        ]
+      },
+      "native/weak_cluster_deletion_spectacle.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "s",
+          "p",
+          "ɛ",
+          "k",
+          "t",
+          "a",
+          "k",
+          "l"
+        ],
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "deletion/weak_cluster_deletion_spectacle.wav": {
+        "kind": "deletion",
+        "verdict": "biased",
+        "decoded_phonemes": [
+          "s",
+          "p",
+          "ɛ",
+          "k",
+          "t",
+          "a",
+          "k",
+          "l"
+        ]
+      },
+      "native/substitution_bonjour.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "b",
+          "ɔ̃",
+          "ʒ",
+          "u",
+          "ʁ"
+        ],
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "substitution/substitution_bonjour.wav": {
+        "kind": "substitution",
+        "verdict": "biased",
+        "decoded_phonemes": [
+          "b",
+          "ɔ̃",
+          "ʒ",
+          "u",
+          "ʁ"
+        ]
+      },
+      "native/substitution_lune.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "l",
+          "i",
+          "n"
+        ],
+        "match_rate": 0.6666666666666666,
+        "anomalies": [
+          "substitution(canonical='y', decoded='i')"
+        ]
+      },
+      "substitution/substitution_lune.wav": {
+        "kind": "substitution",
+        "verdict": "ambiguous",
+        "decoded_phonemes": [
+          "l",
+          "o",
+          "n"
+        ]
+      },
+      "native/substitution_deux.wav": {
+        "kind": "native",
+        "decoded_phonemes": [
+          "d",
+          "ø"
+        ],
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "substitution/substitution_deux.wav": {
+        "kind": "substitution",
+        "verdict": "honest",
+        "decoded_phonemes": [
+          "t",
+          "e"
+        ]
+      }
+    },
+    "verdict_counts": {
+      "honest": 6,
+      "biased": 4,
+      "ambiguous": 2
+    },
+    "bias_rate": 0.3333333333333333,
+    "native_results": {
+      "native/liaison_deletion_les_amis.wav": {
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "native/substitution_chat.wav": {
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "native/liaison_insertion_un_heros.wav": {
+        "match_rate": 1.0,
+        "anomalies": [
+          "insertion(canonical=None, decoded='n')"
+        ]
+      },
+      "native/liaison_deletion_petit_ami.wav": {
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "native/liaison_deletion_les_anciens_amis_chain.wav": {
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "native/liaison_insertion_et_amis.wav": {
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "native/final_consonant_deletion_table.wav": {
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "native/final_consonant_deletion_porte.wav": {
+        "match_rate": 0.5,
+        "anomalies": [
+          "substitution(canonical='ɔ', decoded='a')",
+          "substitution(canonical='t', decoded='s')"
+        ]
+      },
+      "native/weak_cluster_deletion_spectacle.wav": {
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "native/substitution_bonjour.wav": {
+        "match_rate": 1.0,
+        "anomalies": []
+      },
+      "native/substitution_lune.wav": {
+        "match_rate": 0.6666666666666666,
+        "anomalies": [
+          "substitution(canonical='y', decoded='i')"
+        ]
+      },
+      "native/substitution_deux.wav": {
+        "match_rate": 1.0,
+        "anomalies": []
+      }
+    }
+  }
+}
