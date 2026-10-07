@@ -219,3 +219,71 @@ class WordTiming:
     word: str
     start_ms: int
     end_ms: int
+
+
+@dataclass(frozen=True)
+class Chunk:
+    """One rhythmic-group chunk (Architecture Spec, stage 1 output) and the
+    PronunciationUnits it was analyzed into (stage 2).
+
+    Added now because `PaulouPipeline.analyze_sentence` is the first real
+    consumer -- until then nothing needed it (README: "Sentence, Chunk,
+    Attempt not needed yet"). Deliberately DIFFERENT from the Architecture
+    Spec's Chunk in three ways (Decision Log, pipeline entry):
+    - the field is `units`, not `pronunciation_units` (matches
+      `score_attempt(units, ...)`, `score_chunk(units, ...)`);
+    - no `id`: nothing persists chunks yet (no backend), add when it does;
+    - no `ipa_full` / `stress_syllable`: no stage owns them (same gap as
+      PronunciationUnit.syllables/.note), add when a consumer -- the
+      Practice UI -- needs them and a stage exists to produce them.
+
+    `text` is the chunk's own text as split by the sentence parser. Unit
+    ids inside `units` are chunk-local as produced by `assemble_units`
+    (`unit_0`, `unit_1`, ...); `analyze_sentence` re-namespaces them to be
+    unique across the whole sentence before building the Chunk -- this
+    model does not enforce that.
+    """
+
+    text: str
+    units: list[PronunciationUnit]
+
+
+@dataclass(frozen=True)
+class Sentence:
+    """A full input sentence and its chunks, in order.
+
+    Same deviations from the Architecture Spec as `Chunk` (no `id`).
+    `text` is the sentence exactly as the user gave it; the parser's own
+    contract (tests/contract/test_chunking_invariants.py) guarantees the
+    chunk texts concatenate back to it modulo whitespace, but this model
+    does not re-check that.
+    """
+
+    text: str
+    chunks: list[Chunk]
+
+
+@dataclass(frozen=True)
+class ReferenceAudio:
+    """One full-sentence TTS pass (Decision Log D5) plus where each chunk
+    and unit sits inside it, so callers can cut clips with `slice_audio`
+    without re-deriving timestamps.
+
+    - `audio`: the full synthesized sentence, as produced by the
+      TTSProvider (currently MP3 for both providers, though the Protocol
+      doesn't enforce a format -- not carried on this model; see the
+      pipeline entry's open question).
+    - `chunk_spans[i]`: (start_ms, end_ms) of `Sentence.chunks[i]`.
+    - `unit_spans`: (start_ms, end_ms) keyed by unit id -- the
+      sentence-unique ids `analyze_sentence` assigns, so the keys match
+      the units of the Sentence this was synthesized for.
+    Spans are RAW positions in `audio`'s own timeline, before the silence
+    padding and fade `slice_audio` adds at the cut edges (D5).
+
+    The slow pass (D6) is a second ReferenceAudio made with a lower
+    `rate`, not a field on this one.
+    """
+
+    audio: bytes
+    chunk_spans: list[tuple[int, int]]
+    unit_spans: dict[str, tuple[int, int]]
