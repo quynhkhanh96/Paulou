@@ -25,8 +25,16 @@ API — verified against edge-tts 7.2.8 (structural only, by reading the
 installed package's own source and inspecting real signatures — the
 actual network round-trip to Microsoft's endpoint could NOT be verified in
 this environment, no network access to it here):
-- `Communicate.stream_sync()` returns a plain synchronous generator — no
-  asyncio needed here, even though the library is asyncio-based internally.
+- DO NOT USE `Communicate.stream_sync()` (what this file used originally):
+  verified on edge-tts 7.3.1 that it HANGS FOREVER, silently, whenever the
+  underlying async `stream()` raises (HTTP 403, blocked/closed WebSocket,
+  `NoAudioReceived`, timeout...). Its worker thread dies with the exception
+  before it can enqueue the end-of-stream sentinel, and the caller blocks on
+  `queue.get()` for good -- the error is never shown. This is what made
+  `pipeline_cli reference` hang with no output. `synthesize` below instead
+  drives the async `stream()` itself (`asyncio.run` in a worker thread, so
+  it also works when called from inside a running event loop) and lets any
+  exception propagate to the caller.
 - CRITICAL, easy to miss: `Communicate`'s `boundary` parameter defaults to
   `"SentenceBoundary"`, NOT `"WordBoundary"` — must be passed explicitly
   here, or `word_timings` would silently end up with one (wrong-grained)
@@ -43,6 +51,9 @@ Azure's SSML which takes the Architecture Spec's literal "0.7" multiplier
 string. Converted here from the Protocol's `rate: float` (1.0 = normal, no
 change) via `(rate - 1.0) * 100`, formatted with an explicit sign.
 """
+
+import asyncio
+import concurrent.futures
 
 import edge_tts
 
@@ -67,10 +78,18 @@ class EdgeTTSProvider:
             text, self.voice, rate=rate_str, boundary="WordBoundary"
         )
 
+        async def collect() -> list[dict]:
+            return [chunk async for chunk in communicate.stream()]
+
+        # Worker thread: asyncio.run would fail inside an already-running
+        # loop (e.g. a future async backend). .result() re-raises any error.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            chunks = executor.submit(asyncio.run, collect()).result()
+
         audio_chunks: list[bytes] = []
         word_timings: list[WordTiming] = []
 
-        for chunk in communicate.stream_sync():
+        for chunk in chunks:
             if chunk["type"] == "audio":
                 audio_chunks.append(chunk["data"])
             elif chunk["type"] == "WordBoundary":

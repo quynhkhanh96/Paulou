@@ -1,0 +1,257 @@
+{
+  "0": [
+    {
+      "unit_id": "c0_unit_0",
+      "calibrated_score": 97,
+      "scored_ops": [
+        {
+          "op": {
+            "op_type": "match",
+            "unit_id": "c0_unit_0",
+            "canonical_phoneme": "l",
+            "decoded_phoneme": "l",
+            "confidence": 0.999204695224762,
+            "start_ms": 201,
+            "end_ms": 222
+          },
+          "accuracy_score": 99
+        },
+        {
+          "op": {
+            "op_type": "match",
+            "unit_id": "c0_unit_0",
+            "canonical_phoneme": "e",
+            "decoded_phoneme": "e",
+            "confidence": 0.9033326506614685,
+            "start_ms": 242,
+            "end_ms": 262
+          },
+          "accuracy_score": 98
+        },
+        {
+          "op": {
+            "op_type": "match",
+            "unit_id": "c0_unit_0",
+            "canonical_phoneme": "z",
+            "decoded_phoneme": "z",
+            "confidence": 0.8418900966644287,
+            "start_ms": 322,
+            "end_ms": 342
+          },
+          "accuracy_score": 96
+        },
+        {
+          "op": {
+            "op_type": "match",
+            "unit_id": "c0_unit_0",
+            "canonical_phoneme": "ɑ̃",
+            "decoded_phoneme": "ɑ̃",
+            "confidence": 0.8093920946121216,
+            "start_ms": 423,
+            "end_ms": 483
+          },
+          "accuracy_score": 94
+        },
+        {
+          "op": {
+            "op_type": "match",
+            "unit_id": "c0_unit_0",
+            "canonical_phoneme": "f",
+            "decoded_phoneme": "f",
+            "confidence": 0.9994854927062988,
+            "start_ms": 564,
+            "end_ms": 584
+          },
+          "accuracy_score": 99
+        },
+        {
+          "op": {
+            "op_type": "match",
+            "unit_id": "c0_unit_0",
+            "canonical_phoneme": "ɑ̃",
+            "decoded_phoneme": "ɑ̃",
+            "confidence": 0.8282455503940582,
+            "start_ms": 624,
+            "end_ms": 685
+          },
+          "accuracy_score": 95
+        }
+      ],
+      "feedback_text": "Overall: great job! Good pronunciation on these sounds: l, e, z, ɑ̃, f, ɑ̃!"
+    }
+  ],
+  "1": [
+    {
+      "unit_id": "c1_unit_0",
+      "calibrated_score": 52,
+      "scored_ops": [
+        {
+          "op": {
+            "op_type": "match",
+            "unit_id": "c1_unit_0",
+            "canonical_phoneme": "ɔ̃",
+            "decoded_phoneme": "ɔ̃",
+            "confidence": 0.9158490002155304,
+            "start_ms": 143,
+            "end_ms": 204
+          },
+          "accuracy_score": 98
+        },
+        {
+          "op": {
+            "op_type": "insertion",
+            "unit_id": "c1_unit_0",
+            "canonical_phoneme": null,
+            "decoded_phoneme": "t",
+            "confidence": 0.9395121335983276,
+            "start_ms": 224,
+            "end_ms": 245
+          },
+          "accuracy_score": 6
+        }
+      ],
+      "feedback_text": "Overall: this one needs more practice. Extra sound heard: t. Good pronunciation on the ɔ̃ sound!"
+    },
+    {
+      "unit_id": "c1_unit_1",
+      "calibrated_score": 79,
+      "scored_ops": [
+        {
+          "op": {
+            "op_type": "match",
+            "unit_id": "c1_unit_1",
+            "canonical_phoneme": "a",
+            "decoded_phoneme": "a",
+            "confidence": 0.9998836517333984,
+            "start_ms": 285,
+            "end_ms": 306
+          },
+          "accuracy_score": 99
+        },
+        {
+          "op": {
+            "op_type": "match",
+            "unit_id": "c1_unit_1",
+            "canonical_phoneme": "ʃ",
+            "decoded_phoneme": "ʃ",
+            "confidence": 0.9961813688278198,
+            "start_ms": 367,
+            "end_ms": 387
+          },
+          "accuracy_score": 99
+        },
+        {
+          "op": {
+            "op_type": "deletion",
+            "unit_id": "c1_unit_1",
+            "canonical_phoneme": "ə",
+            "decoded_phoneme": null,
+            "confidence": null,
+            "start_ms": null,
+            "end_ms": null
+          },
+          "accuracy_score": 0
+        },
+        {
+          "op": {
+            "op_type": "match",
+            "unit_id": "c1_unit_1",
+            "canonical_phoneme": "t",
+            "decoded_phoneme": "t",
+            "confidence": 0.9996426105499268,
+            "start_ms": 489,
+            "end_ms": 510
+          },
+          "accuracy_score": 99
+        },
+        {
+          "op": {
+            "op_type": "match",
+            "unit_id": "c1_unit_1",
+            "canonical_phoneme": "e",
+            "decoded_phoneme": "e",
+            "confidence": 0.9927518367767334,
+            "start_ms": 530,
+            "end_ms": 550
+          },
+          "accuracy_score": 99
+        }
+      ],
+      "feedback_text": "Overall: good effort, a few things to work on. Missing the ə sound. Good pronunciation on these sounds: a, ʃ, t, e!"
+    },
+    {
+      "unit_id": "c1_unit_2",
+      "calibrated_score": 99,
+      "scored_ops": [
+        {
+          "op": {
+            "op_type": "match",
+            "unit_id": "c1_unit_2",
+            "canonical_phoneme": "d",
+            "decoded_phoneme": "d",
+            "confidence": 0.9995856881141663,
+            "start_ms": 632,
+            "end_ms": 652
+          },
+          "accuracy_score": 99
+        },
+        {
+          "op": {
+            "op_type": "match",
+            "unit_id": "c1_unit_2",
+            "canonical_phoneme": "e",
+            "decoded_phoneme": "e",
+            "confidence": 0.9388283491134644,
+            "start_ms": 673,
+            "end_ms": 693
+          },
+          "accuracy_score": 99
+        }
+      ],
+      "feedback_text": "Overall: great job! Good pronunciation on these sounds: d, e!"
+    },
+    {
+      "unit_id": "c1_unit_3",
+      "calibrated_score": 95,
+      "scored_ops": [
+        {
+          "op": {
+            "op_type": "match",
+            "unit_id": "c1_unit_3",
+            "canonical_phoneme": "p",
+            "decoded_phoneme": "p",
+            "confidence": 0.999488115310669,
+            "start_ms": 775,
+            "end_ms": 795
+          },
+          "accuracy_score": 99
+        },
+        {
+          "op": {
+            "op_type": "match",
+            "unit_id": "c1_unit_3",
+            "canonical_phoneme": "ɔ",
+            "decoded_phoneme": "ɔ",
+            "confidence": 0.7225254774093628,
+            "start_ms": 856,
+            "end_ms": 877
+          },
+          "accuracy_score": 87
+        },
+        {
+          "op": {
+            "op_type": "match",
+            "unit_id": "c1_unit_3",
+            "canonical_phoneme": "m",
+            "decoded_phoneme": "m",
+            "confidence": 0.9997532963752747,
+            "start_ms": 958,
+            "end_ms": 979
+          },
+          "accuracy_score": 99
+        }
+      ],
+      "feedback_text": "Overall: great job! Good pronunciation on these sounds: p, ɔ, m!"
+    }
+  ]
+}

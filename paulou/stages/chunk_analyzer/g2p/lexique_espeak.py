@@ -98,7 +98,7 @@ def _segment_ipa(ipa: str) -> list[str]:
     return phonemes
 
 
-def _load_lexique400(lexicon_path: str | Path) -> dict[str, list[str]]:
+def load_lexique400(lexicon_path: str | Path) -> dict[str, list[str]]:
     """Load the real Lexique400 database (37-column TSV, tab-separated).
 
     Uses columns `1_Mot` (word) and `3_Phono_IPA` (IPA transcription). See
@@ -114,6 +114,9 @@ def _load_lexique400(lexicon_path: str | Path) -> dict[str, list[str]]:
                 continue
             lexicon[row["1_Mot"].lower()] = _segment_ipa(ipa)
     return lexicon
+
+
+_load_lexique400 = load_lexique400  # kept: older call sites/tests use the private name
 
 
 def _parse_espeak_ipa(raw_output: str) -> list[str]:
