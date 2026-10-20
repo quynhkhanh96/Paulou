@@ -60,3 +60,23 @@ def test_rate_is_sent_as_signed_percentage(monkeypatch):
     EdgeTTSProvider().synthesize("x", rate=0.7)
 
     assert seen["rate"] == "-30%" and seen["boundary"] == "WordBoundary"
+
+
+def test_timing_offset_shifts_start_and_end_later(monkeypatch):
+    _patch_stream(monkeypatch, lambda: [
+        {"type": "WordBoundary", "text": "a", "offset": 1_000_000, "duration": 1_000_000},
+    ])
+
+    _, timings = EdgeTTSProvider(timing_offset_ms=50).synthesize("a")
+
+    assert timings == [WordTiming("a", 150, 250)]
+
+
+def test_negative_timing_offset_is_clamped_at_zero(monkeypatch):
+    _patch_stream(monkeypatch, lambda: [
+        {"type": "WordBoundary", "text": "a", "offset": 100_000, "duration": 100_000},
+    ])
+
+    _, timings = EdgeTTSProvider(timing_offset_ms=-50).synthesize("a")
+
+    assert timings == [WordTiming("a", 0, 0)]

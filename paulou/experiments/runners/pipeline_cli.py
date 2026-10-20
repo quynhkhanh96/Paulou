@@ -16,6 +16,12 @@ Commands (run from the repo root, `python -m experiments.runners.pipeline_cli`):
       second pass at rate 0.7 (D6) under out/slow/.
   score "..." --audio my_recording.wav --chunk 0
       analyze, then score YOUR recording of chunk N (default 0).
+  timings "..." [--rate 1.0] [--decode]
+      DIAGNOSTIC for span problems: prints the TTS provider's raw word
+      timings; with --decode also runs the free-phone recognizer over the
+      whole audio and shows which word window each decoded phone falls in
+      (phones outside every window are flagged "GAP" -- speech the word
+      timings do not cover).
   selftest "..."
       the full loop with no microphone: analyze -> TTS -> cut each chunk ->
       decode + score that clip. Scoring TTS speech against its own canonical
@@ -80,6 +86,33 @@ def to_wav_bytes(audio: bytes, suffix: str) -> bytes:
     return buf.getvalue()
 
 
+def assign_phones_to_words(phones, boundaries, timings):
+    """For each decoded phone, the index of the TTS word whose
+    [start_ms, end_ms] window contains the phone's midpoint, or None."""
+    rows = []
+    for phone, (start, end) in zip(phones, boundaries):
+        mid = (start + end) / 2
+        word_index = next(
+            (i for i, t in enumerate(timings) if t.start_ms <= mid <= t.end_ms), None
+        )
+        rows.append((phone, start, end, word_index))
+    return rows
+
+
+def format_timings(timings, rows=None) -> str:
+    lines = ["TTS word timings (ms):"]
+    for i, t in enumerate(timings):
+        gap = timings[i + 1].start_ms - t.end_ms if i + 1 < len(timings) else None
+        gap_text = "" if gap is None else f"  gap_to_next={gap}"
+        lines.append(f"  {i:>2} {t.word:<14} {t.start_ms:>6} - {t.end_ms:<6} dur={t.end_ms - t.start_ms}{gap_text}")
+    if rows is not None:
+        lines.append("Decoded phones over the whole audio (ms):")
+        for phone, start, end, word_index in rows:
+            where = "GAP (outside every word window)" if word_index is None else f"word {word_index} {timings[word_index].word!r}"
+            lines.append(f"  {phone:<4} {start:>6} - {end:<6} {where}")
+    return "\n".join(lines)
+
+
 def format_sentence(sentence: Sentence) -> str:
     lines = [f"Sentence: {sentence.text}"]
     for i, chunk in enumerate(sentence.chunks):
@@ -130,6 +163,11 @@ def build_pipeline(args: argparse.Namespace) -> PaulouPipeline:
                 f"separately -- see SETUP.md). Pass --lexique-path to point elsewhere."
             )
         stage_kwargs["g2p"] = {"lexicon": load_lexique400(lexicon_path)}
+
+    if args.timing_offset_ms is not None:
+        if config.tts != "edge_tts":
+            raise SystemExit("--timing-offset-ms is only supported for --tts edge_tts.")
+        stage_kwargs["tts"] = {"timing_offset_ms": args.timing_offset_ms}
 
     phone_stats = load_phone_stats(Path(args.phone_stats)) if args.phone_stats else {}
     return PaulouPipeline(
@@ -205,6 +243,16 @@ def cmd_score(pipe: PaulouPipeline, args) -> int:
     return 0
 
 
+def cmd_timings(pipe: PaulouPipeline, args) -> int:
+    audio, timings = pipe.tts.synthesize(args.text, rate=args.rate)
+    rows = None
+    if args.decode:
+        phones, _conf, boundaries = pipe.free_decoder.decode(to_wav_bytes(audio, ".mp3"))
+        rows = assign_phones_to_words(phones, boundaries, timings)
+    print(format_timings(timings, rows))
+    return 0
+
+
 def cmd_selftest(pipe: PaulouPipeline, args) -> int:
     sentence = pipe.analyze_sentence(args.text)
     print(format_sentence(sentence))
@@ -230,6 +278,7 @@ COMMANDS = {
     "analyze": cmd_analyze,
     "reference": cmd_reference,
     "score": cmd_score,
+    "timings": cmd_timings,
     "selftest": cmd_selftest,
 }
 
@@ -243,6 +292,9 @@ def make_parser() -> argparse.ArgumentParser:
                             help=f"override PipelineConfig.{name}")
     common.add_argument("--lexique-path", default=str(DEFAULT_LEXIQUE_PATH))
     common.add_argument("--tts-cache-dir", default=None)
+    common.add_argument("--timing-offset-ms", type=int, default=None,
+                        help="edge_tts only: shift all TTS word timings later by N ms "
+                             "(see edge_tts_provider.py TIMING note); try 0/50/80 and listen")
     common.add_argument("--hang-dump", type=int, default=None, metavar="SECONDS",
                         help="if still running after SECONDS (repeating), print every "
                              "thread's stack to stderr -- shows where a hang is")
@@ -256,6 +308,9 @@ def make_parser() -> argparse.ArgumentParser:
     score = sub.add_parser("score", parents=[common])
     score.add_argument("--audio", required=True)
     score.add_argument("--chunk", type=int, default=0)
+    timings = sub.add_parser("timings", parents=[common])
+    timings.add_argument("--rate", type=float, default=1.0)
+    timings.add_argument("--decode", action="store_true")
     selftest = sub.add_parser("selftest", parents=[common])
     selftest.add_argument("--json-out", default=None)
     return parser

@@ -156,3 +156,50 @@ def test_build_pipeline_applies_overrides_and_reports_missing_lexique(tmp_path):
     args = cli.make_parser().parse_args(["analyze", "x", "--tts", "azure_neural", "--g2p", "other"])
     pipe = cli.build_pipeline(args)
     assert pipe.config.tts == "azure_neural" and pipe.config.g2p == "other"
+
+
+def test_assign_phones_to_words_uses_midpoint_and_flags_gaps():
+    from core.models import WordTiming
+
+    timings = [WordTiming("a", 0, 100), WordTiming("b", 200, 300)]
+    rows = cli.assign_phones_to_words(
+        ["x", "y", "z"], [(10, 50), (120, 180), (190, 230)], timings
+    )
+
+    assert [r[3] for r in rows] == [0, None, 1]
+
+
+def test_timings_command_prints_words_and_flags_phones_outside_windows(capsys):
+    from core.models import WordTiming
+
+    class Stub:
+        class tts:
+            @staticmethod
+            def synthesize(text, rate=1.0):
+                return _mp3(300), [WordTiming("Bonjour", 0, 100), WordTiming("tous", 150, 250)]
+
+        class free_decoder:
+            @staticmethod
+            def decode(audio):
+                assert audio[:4] == b"RIFF"
+                return ["b", "t"], [0.9, 0.9], [(10, 60), (110, 140)]
+
+    run(["timings", "Bonjour tous", "--decode"], Stub())
+
+    out = capsys.readouterr().out
+    assert "gap_to_next=50" in out
+    assert "word 0 'Bonjour'" in out
+    assert "GAP" in out
+
+
+def test_timing_offset_flag_reaches_tts_stage_kwargs_and_is_edge_only(tmp_path):
+    lex = tmp_path / "lex.tsv"
+    lex.write_text("1_Mot\t3_Phono_IPA\nbonjour\tbɔ̃ʒuʁ\n", encoding="utf-8")
+    parse = cli.make_parser().parse_args
+    pipe = cli.build_pipeline(parse(["analyze", "x", "--lexique-path", str(lex), "--timing-offset-ms", "50"]))
+    assert pipe.stage_kwargs["tts"] == {"timing_offset_ms": 50}
+
+    with pytest.raises(SystemExit, match="only supported"):
+        cli.build_pipeline(parse(
+            ["analyze", "x", "--lexique-path", str(lex), "--tts", "azure_neural", "--timing-offset-ms", "50"]
+        ))

@@ -46,6 +46,18 @@ this environment, no network access to it here):
   compensation arithmetic directly in tick units) — same unit and
   conversion (`/10_000` for ms) as Azure's SDK.
 
+TIMING (measured on edge-tts 7.3.1 with the wav2vec2 recognizer, one sentence,
+one voice -- a small sample, so treat as a lead, not a result): the word
+windows do not line up with the audio they describe. (1) Every gap between
+consecutive windows was 12-13 ms ("Les enfants ont acheté des pommes."), so
+window ENDS look derived from the next word's start rather than measured.
+(2) Word-final vowels sit at or past their window's end -- /e/ of "acheté"
+decoded at 1231-1251 ms against a window ending at 1212 -- so cutting at the
+window truncates it, and the next clip starts with the tail of the previous
+word. Needed shifts at the five word boundaries ranged ~15-70 ms (mean ~50).
+A possible, UNVERIFIED contributor: MP3 decoder delay without a LAME header
+is ~1105 samples (~46 ms at 24 kHz). `timing_offset_ms` is the knob.
+
 RATE — edge-tts takes a percentage-delta STRING (e.g. "-30%"), unlike
 Azure's SSML which takes the Architecture Spec's literal "0.7" multiplier
 string. Converted here from the Protocol's `rate: float` (1.0 = normal, no
@@ -69,8 +81,16 @@ class EdgeTTSProvider:
     (Decision Log D31) before relying on this in production.
     """
 
-    def __init__(self, voice: str = "fr-FR-DeniseNeural"):
+    def __init__(self, voice: str = "fr-FR-DeniseNeural", timing_offset_ms: int = 0):
+        """`timing_offset_ms` shifts every returned WordTiming LATER by that
+        many ms (clamped at 0). Default 0 = timings exactly as the service
+        reports them. Exists because measured word windows lead the decoded
+        audio by tens of ms and their ends are not real measurements -- see
+        the module docstring's TIMING note; tune by ear/decoder, don't trust
+        any nonzero default until validated on more sentences.
+        """
         self.voice = voice
+        self.timing_offset_ms = timing_offset_ms
 
     def synthesize(self, text: str, rate: float = 1.0) -> tuple[bytes, list[WordTiming]]:
         rate_str = f"{(rate - 1.0) * 100:+.0f}%"
@@ -93,8 +113,9 @@ class EdgeTTSProvider:
             if chunk["type"] == "audio":
                 audio_chunks.append(chunk["data"])
             elif chunk["type"] == "WordBoundary":
-                start_ms = chunk["offset"] / 10_000
+                start_ms = chunk["offset"] / 10_000 + self.timing_offset_ms
                 end_ms = start_ms + chunk["duration"] / 10_000
+                start_ms, end_ms = max(start_ms, 0), max(end_ms, 0)
                 word_timings.append(
                     WordTiming(
                         word=chunk["text"],
