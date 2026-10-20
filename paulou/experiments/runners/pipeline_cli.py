@@ -14,8 +14,15 @@ Commands (run from the repo root, `python -m experiments.runners.pipeline_cli`):
       analyze + ONE TTS pass; writes reference.mp3, spans.json and one mp3
       clip per chunk and per unit (cut with slice_reference). --slow adds a
       second pass at rate 0.7 (D6) under out/slow/.
-  score "..." --audio my_recording.wav --chunk 0
-      analyze, then score YOUR recording of chunk N (default 0).
+  score "..." --record [--chunk N|all] [--save-recording me.wav]
+      analyze, show the text to read, record from your microphone until you
+      press Enter, then score it. Needs `pip install sounddevice`.
+  score "..." --audio my_recording.wav [--chunk N|all]
+      same, but score an existing file (wav/flac/ogg/mp3...).
+      --chunk N scores one chunk (default 0); --chunk all scores the whole
+      sentence as one recording. The Gemini parser can chunk the same
+      sentence differently on different runs, so prefer --record (analyze
+      and record happen in ONE run) or --chunk all when using --audio.
   timings "..." [--rate 1.0] [--decode]
       DIAGNOSTIC for span problems: prints the TTS provider's raw word
       timings; with --decode also runs the free-phone recognizer over the
@@ -111,6 +118,41 @@ def format_timings(timings, rows=None) -> str:
             where = "GAP (outside every word window)" if word_index is None else f"word {word_index} {timings[word_index].word!r}"
             lines.append(f"  {phone:<4} {start:>6} - {end:<6} {where}")
     return "\n".join(lines)
+
+
+def frames_to_wav_bytes(samples, sample_rate: int) -> bytes:
+    """float32 mono samples in [-1, 1] -> WAV bytes."""
+    import soundfile as sf
+
+    buf = io.BytesIO()
+    sf.write(buf, samples, sample_rate, format="WAV", subtype="PCM_16")
+    return buf.getvalue()
+
+
+def record_until_enter(sample_rate: int = 16_000) -> bytes:
+    """Record mono audio from the default microphone until Enter is pressed."""
+    try:
+        import numpy as np
+        import sounddevice as sd
+    except ImportError as exc:
+        raise SystemExit("Recording needs sounddevice: pip install sounddevice") from exc
+
+    frames = []
+
+    def on_audio(indata, _frames, _time, _status):
+        frames.append(indata.copy())
+
+    try:
+        stream = sd.InputStream(samplerate=sample_rate, channels=1, dtype="float32", callback=on_audio)
+    except sd.PortAudioError:
+        sample_rate = int(sd.query_devices(kind="input")["default_samplerate"])
+        stream = sd.InputStream(samplerate=sample_rate, channels=1, dtype="float32", callback=on_audio)
+
+    with stream:
+        input("Recording... press Enter to stop. ")
+    if not frames:
+        raise SystemExit("No audio captured.")
+    return frames_to_wav_bytes(np.concatenate(frames).reshape(-1), sample_rate)
 
 
 def format_sentence(sentence: Sentence) -> str:
@@ -234,12 +276,30 @@ def cmd_reference(pipe: PaulouPipeline, args) -> int:
 def cmd_score(pipe: PaulouPipeline, args) -> int:
     sentence = pipe.analyze_sentence(args.text)
     print(format_sentence(sentence))
-    if not 0 <= args.chunk < len(sentence.chunks):
-        raise SystemExit(f"--chunk {args.chunk} out of range (0..{len(sentence.chunks) - 1}).")
-    audio_path = Path(args.audio)
-    wav = to_wav_bytes(audio_path.read_bytes(), audio_path.suffix)
-    print(f"\nScores for chunk {args.chunk} ({sentence.chunks[args.chunk].text!r}):")
-    _score_and_print(pipe, sentence.chunks[args.chunk].units, wav, bool(args.phone_stats))
+
+    if args.chunk == "all":
+        units = [u for chunk in sentence.chunks for u in chunk.units]
+        target_text = sentence.text
+    else:
+        if not args.chunk.isdigit() or int(args.chunk) >= len(sentence.chunks):
+            raise SystemExit(
+                f"--chunk {args.chunk} out of range (0..{len(sentence.chunks) - 1}) or 'all'."
+            )
+        chunk = sentence.chunks[int(args.chunk)]
+        units, target_text = chunk.units, chunk.text
+
+    if args.record:
+        print(f"\nRead aloud: {target_text}")
+        wav = record_until_enter()
+        if args.save_recording:
+            Path(args.save_recording).write_bytes(wav)
+            print(f"Saved recording to {args.save_recording}")
+    else:
+        audio_path = Path(args.audio)
+        wav = to_wav_bytes(audio_path.read_bytes(), audio_path.suffix)
+
+    print(f"\nScores for {args.chunk!r} ({target_text!r}):")
+    _score_and_print(pipe, units, wav, bool(args.phone_stats))
     return 0
 
 
@@ -306,8 +366,11 @@ def make_parser() -> argparse.ArgumentParser:
     ref.add_argument("--out-dir", required=True)
     ref.add_argument("--slow", action="store_true", help="also synthesize a rate-0.7 pass")
     score = sub.add_parser("score", parents=[common])
-    score.add_argument("--audio", required=True)
-    score.add_argument("--chunk", type=int, default=0)
+    source = score.add_mutually_exclusive_group(required=True)
+    source.add_argument("--audio", help="existing recording to score")
+    source.add_argument("--record", action="store_true", help="record from the microphone")
+    score.add_argument("--save-recording", default=None, help="with --record: also save the WAV here")
+    score.add_argument("--chunk", default="0", help="chunk index, or 'all' for the whole sentence")
     timings = sub.add_parser("timings", parents=[common])
     timings.add_argument("--rate", type=float, default=1.0)
     timings.add_argument("--decode", action="store_true")

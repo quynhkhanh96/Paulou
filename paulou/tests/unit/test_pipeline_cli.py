@@ -203,3 +203,67 @@ def test_timing_offset_flag_reaches_tts_stage_kwargs_and_is_edge_only(tmp_path):
         cli.build_pipeline(parse(
             ["analyze", "x", "--lexique-path", str(lex), "--tts", "azure_neural", "--timing-offset-ms", "50"]
         ))
+
+
+def test_score_chunk_all_scores_every_unit_in_one_call(tmp_path):
+    stub = StubPipeline()
+    wav = tmp_path / "me.wav"
+    wav.write_bytes(b"w")
+
+    run(["score", "bon jour", "--audio", str(wav), "--chunk", "all"], stub)
+
+    units, _ = stub.scored[0]
+    assert [u.id for u in units] == ["c0_unit_0", "c1_unit_0"]
+
+
+def test_score_requires_audio_or_record():
+    with pytest.raises(SystemExit):
+        cli.make_parser().parse_args(["score", "bon jour"])
+
+
+def test_frames_to_wav_bytes_roundtrips():
+    import numpy as np
+    import soundfile as sf
+
+    samples = (np.sin(np.linspace(0, 100, 16_000)) * 0.5).astype("float32")
+
+    data, rate = sf.read(io.BytesIO(cli.frames_to_wav_bytes(samples, 16_000)), dtype="float32")
+
+    assert rate == 16_000 and len(data) == 16_000 and abs(data - samples).max() < 1e-3
+
+
+def test_record_until_enter_collects_callback_frames(monkeypatch):
+    import sys
+    import types
+
+    import numpy as np
+
+    class FakeStream:
+        def __init__(self, samplerate, channels, dtype, callback):
+            self.callback = callback
+
+        def __enter__(self):
+            self.callback(np.full((800, 1), 0.1, dtype="float32"), 800, None, None)
+            self.callback(np.full((800, 1), 0.1, dtype="float32"), 800, None, None)
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    fake = types.SimpleNamespace(InputStream=FakeStream, PortAudioError=OSError)
+    monkeypatch.setitem(sys.modules, "sounddevice", fake)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "")
+
+    wav = cli.record_until_enter(16_000)
+
+    assert wav[:4] == b"RIFF" and len(wav) > 44 + 2 * 1600 - 10
+
+
+def test_score_record_saves_recording_and_scores_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "record_until_enter", lambda: b"RIFFfake")
+    stub = StubPipeline()
+    saved = tmp_path / "me.wav"
+
+    run(["score", "bon jour", "--record", "--chunk", "0", "--save-recording", str(saved)], stub)
+
+    assert saved.read_bytes() == b"RIFFfake" and stub.scored[0][1] == b"RIFFfake"
