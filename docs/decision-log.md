@@ -324,6 +324,57 @@ replacing the two-branch GOP/free-decode architecture
 
 **Status:** Locked in for the candidate choice (Cnam-LMSSC); the residual bias caveat stays open, tracked here rather than re-opening D10 itself.
 
+### D48 — PaulouPipeline composes the stages; PipelineConfig, lazy stage construction, stage-to-module map, sentence-level span location
+
+**Decision:** Added the orchestration layer the Architecture Spec always planned, with several deliberate deviations from the spec's illustrative example. (1) `core/config.py::PipelineConfig` has four fields: `parser="gemini"` (D27), `g2p="lexique_espeak"` (D30), `tts="edge_tts"` (D31) and `free_decoder="wav2vec2_cnam"` (D47); the spec's `gop_scorer` field is dropped (dormant since D36) and the default TTS is edge-tts rather than the spec's `azure_neural`. (2) `pipeline.py::PaulouPipeline(config, phone_stats, fallback_phone_class=None, tts_cache_dir=None, stage_kwargs=None)` exposes `analyze_sentence(text) -> Sentence`, `synthesize_reference(sentence, rate=1.0) -> ReferenceAudio`, `score_attempt(units, audio) -> list[UnitResult]` and `slice_reference(reference, span) -> bytes`. `score_attempt` takes a list of units (it wraps `score_chunk`, D42), not the spec's single `unit`, and `phone_stats` is injected (D24). The slow pass (D6) is a second `synthesize_reference` call with a lower `rate`. (3) Stages are built lazily on first use (`cached_property`), so creating a pipeline imports no model library and needs no API key. (4) `pipeline.py::_STAGE_MODULES` maps each known `(stage, key)` to the module that registers it, and imports that module only if the key is not yet registered; this resolves the registry-import problem D45 flagged (decorators run only when their module is imported). (5) `stage_kwargs` passes constructor kwargs per stage name, because `build()` constructs with no arguments and the G2P needs its lexicon. (6) New models `Chunk(text, units)`, `Sentence(text, chunks)` and `ReferenceAudio(audio, chunk_spans, unit_spans)` in `core/models.py`; they deviate from the spec by naming the field `units` (not `pronunciation_units`), having no `id`, and having no `ipa_full`/`stress_syllable` (no stage owns them, same gap as `PronunciationUnit.syllables`/`.note`). `ReferenceAudio` carries no audio format; `pipeline.AUDIO_FORMAT = "mp3"` is the single place that states it (both providers return MP3). (7) `analyze_sentence` re-namespaces unit ids as `c{chunk}_unit_{n}` so they are unique across the sentence (`assemble_units` numbers from 0 in every chunk), and drops chunks that yield no units (punctuation only). (8) `stages/tts/timing_alignment.py::locate_spans(sentence, word_timings)` finds each chunk's and unit's `(start_ms, end_ms)` in the single TTS pass by comparing normalized character streams (lowercase, letters and digits only), not word by word. (9) `core/registry.py` gained `is_registered`, and `build` no longer reports a `KeyError` raised inside an implementation's constructor as "No implementation registered".
+
+**Rationale:**
+- Word-by-word matching cannot work: providers tokenize on whitespace ("l'ami" is one token) while the Chunk Analyzer does not (an elision unit holds ["l'", "ami"]), and one token may span two units ("est-ce"). Character streams are tokenization-independent.
+- `locate_spans` raises `ValueError` on any mismatch instead of guessing, because a mis-placed span silently slices the wrong audio for the learner to imitate.
+- Lazy construction keeps `analyze_sentence` usable without torch or a TTS connection, and keeps tests free of heavy imports.
+- `stage_kwargs` was found by running the real stages: with stub stages `build("g2p", "lexique_espeak")` looked fine, with the real class it raised `ValueError: Must provide either lexicon_path or lexicon`. `load_lexique400` was made public in `lexique_espeak.py` for the CLI to use (the private name remains as an alias).
+- Chunks without units are dropped because nothing can be practiced, scored or located in them.
+
+**Tradeoff accepted:**
+- Dropping empty chunks means chunk texts no longer always concatenate back to the input sentence (the parser's own invariant, tests/contract/test_chunking_invariants.py, applies to the parser's output, not to `Sentence.chunks`).
+- `_STAGE_MODULES` is a second place to update when an implementation is added (alongside the implementation's own `@register`), and `stage_kwargs` is an untyped dict. Both are glue inside `pipeline.py`, not a new abstraction layer (D12), but they are exactly the kind of thing to flag.
+- Spans are word-granular (the finest the providers give); a token straddling two units gives both the same span, so their spans overlap.
+- `Chunk`/`Sentence` lack the persistence-oriented fields (`id`) until a backend exists.
+
+**Status:** Locked in for MVP. Verified with stub stages (tests/unit/test_pipeline.py, test_timing_alignment.py) and by one real end-to-end run on one sentence (D50). The unit-boundary accuracy of the spans is not locked in: see D49.
+
+### D49 — EdgeTTSProvider stops using stream_sync(); optional timing_offset_ms; boundary accuracy is OPEN
+
+**Decision:** (1) `EdgeTTSProvider.synthesize` no longer calls `edge_tts.Communicate.stream_sync()`; it drives the async `stream()` itself (`asyncio.run` inside a worker thread, so it also works from inside a running event loop) and lets any exception propagate. (2) `EdgeTTSProvider(voice, timing_offset_ms=0)` shifts every returned `WordTiming` later by that many milliseconds (negative values clamp at 0); exposed on the CLI as `--timing-offset-ms`. The default stays 0 (service timings unchanged). (3) Whether a constant offset is enough is an OPEN question: by-ear checks accepted 50 ms and 80 ms on one sentence, but no default has been chosen.
+
+**Rationale:**
+- Reproduced on edge-tts 7.3.1: when the underlying `stream()` raises (HTTP 403, blocked WebSocket, `NoAudioReceived`, timeout), the worker thread dies before enqueuing the end-of-stream sentinel and the caller blocks forever on `queue.get()`, so every service error looked like a silent hang (`pipeline_cli reference` printed nothing and wrote no files). The first real error behind it was an HTTP 403 that went away after `pip install -U edge-tts`. This also explains the "HANG, not fail cleanly" note already in tests/contract/test_edge_tts_provider_contract.py.
+- Measured on "Les enfants ont acheté des pommes." (edge-tts 7.3.1, wav2vec2 phone times from `pipeline_cli timings --decode`): all gaps between consecutive word windows were 12-13 ms, which suggests window ends are derived from the next word's start rather than measured; word-final vowels sat at or after their window's end (the /e/ of "acheté" decoded at 1231-1251 ms against a window ending at 1212 ms), so slicing at the windows cut the vowel and the next clip began with the tail of the previous word. Needed shifts at the five word boundaries were roughly 15-70 ms (mean about 50). With the raw timings, /t e/ of "acheté" was heard at the start of the following chunk; with 50 ms and with 80 ms it no longer was.
+- A possible, unverified contributor is MP3 decoder delay without a LAME header (about 1105 samples, 46 ms at 24 kHz).
+
+**Tradeoff accepted:**
+- One sentence, one voice, and CTC phone times that are themselves only accurate to tens of milliseconds: this is a lead, not a result. A constant offset would not help if the needed shift varies a lot per boundary (here 15-70 ms); the fallback would be snapping each boundary to the lowest-energy point within about +/-100 ms (a new pure function, which would need its own entry).
+- Starting later also trims the start of a clip: a liaison consonant that belongs acoustically to the next word can fall just before a shifted start.
+- The sync API was simpler; the replacement costs a thread per call.
+
+**Status:** (1) is locked in (bug fix, covered by tests/unit/test_edge_tts_provider.py). (2) is available but its default is not chosen; revisit with many sentences and voices once the UI makes collecting them cheap. (3) open.
+
+### D50 — Manual end-to-end harness in experiments/runners/pipeline_cli.py; placeholder calibration stats are allowed there, loudly
+
+**Decision:** Added `experiments/runners/pipeline_cli.py`, a CLI that runs `PaulouPipeline` with real components: `analyze`, `reference`, `timings`, `selftest` (TTS audio scored against its own canonical phonemes) and `score` (a recording from `--audio` or recorded from the microphone with `--record`). It lives in `experiments/` and is not part of CI (D16); `tests/unit/test_pipeline_cli.py` covers its argument handling and file output with a stub pipeline. Until real native-corpus statistics exist (D11/D24), the CLI fills `phone_stats` with a placeholder (mean 0.5, std 0.2, sample size 1000) for the phones in play, and prints a warning to stderr; `--phone-stats FILE` supplies a real table instead. Usage and installation are documented in `docs/pipeline_cli.md`.
+
+**Rationale:**
+- Stub-based tests cannot catch integration mistakes: the first real runs found the G2P construction failure (D48), the edge-tts hang (D49), and the span problem (D49), none of which any stub test could have shown.
+- `calibrate_score` raises if a phone is missing from `phone_stats`, so without a placeholder nothing can be scored at all before the native-corpus run exists. The placeholder is confined to the experiments CLI and always announced.
+- `selftest` gives a microphone-free regression check for the whole chain: scoring a TTS clip against its own phonemes should come out high, so a low score points at the pipeline, not at a learner. The first real runs produced a list of findings that do not depend on recording quality (see Roadmap): liaisons the rule engine does not predict, optional schwa scored as deletion, non-deterministic chunking.
+
+**Tradeoff accepted:**
+- Scores printed under placeholder statistics are not meaningful; only the structure of the alignment ops is. The CLI says so on every such run.
+- `--record` and the real-model paths are untested in CI (hardware, network, model downloads); only their plumbing is.
+- The Gemini parser is not deterministic, so two runs of the same sentence can produce different chunks; `score --record` analyzes and records in one run to avoid mismatched chunks.
+
+**Status:** Locked in as the manual validation tool until a UI exists; replace the placeholder with real `phone_stats` after the native-corpus run.
+
 ---
 
 ## Engineering / codebase architecture

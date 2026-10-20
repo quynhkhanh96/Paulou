@@ -11,33 +11,36 @@ These rules come from the Architecture Spec / Decision Log — this section stat
 1. **`core/` and `stages/` never import from `backend/` or `frontend/`.** Dependency direction is one-way (Decision Log D13). If a stage module needs something like a DB session or an HTTP request object, that's a sign the logic belongs in `backend/`, not in `stages/`.
 2. **A stage goes through the registry only if it's genuinely swappable** (has an external/model dependency, or is a real candidate for comparison — see Decision Log D12). Don't wrap a pure function in `Protocol`/`register()` just for consistency — that's the over-engineering case explicitly rejected for liaison rules, alignment, merge, calibration, and feedback templating.
 3. **`core/models.py` has no ORM or web-framework inheritance.** It must be importable and usable with zero DB connection, zero API framework — this is what keeps notebooks and `tests/unit` fast and dependency-free (Decision Log D14).
-4. **Anything in `stages/` that touches an external API/model must implement its stage's `Protocol` exactly** — no extra required constructor args beyond what config provides, since the registry instantiates via `build(stage, key, **kwargs)`.
+4. **Anything in `stages/` that touches an external API/model must implement its stage's `Protocol` exactly.** The registry instantiates via `build(stage, key, **kwargs)`; any constructor argument an implementation genuinely needs (e.g. the G2P lexicon: `lexicon=load_lexique400(path)`) arrives through `PaulouPipeline`'s `stage_kwargs`, never through `PipelineConfig` (Decision Log D48). Keep such arguments few, and give them defaults where a sensible one exists.
+5. **A registered implementation's module must be imported before `build()` is called.** `@register(...)` only runs when its module is imported, so an implementation nobody imports is invisible to the registry. For the pipeline, `pipeline.py::_STAGE_MODULES` maps each `(stage, key)` to the module to import; for the experiments runners, `stages/speech_assessment/free_decode/__init__.py` imports the free-decoder implementations (Decision Log D48). `core/registry.py::is_registered` can be used to check.
 
 ---
 
 ## Adding a new implementation for an existing stage
 
-This is the most common type of change expected (e.g. trying `gop-ft` alongside `kaldi`, or a different TTS vendor). Steps:
+This is the most common type of change expected (e.g. trying a new free-phone recognizer alongside `wav2vec2_cnam`, or a different TTS vendor). Steps:
 
-1. **Implement the Protocol.** Create `stages/<stage_name>/<new_impl>.py`, write a class matching the stage's `Protocol` signature exactly (see Architecture Spec for each interface). No need to import or subclass anything from `core/interfaces.py` — `Protocol` is structural, matching by signature is enough.
+1. **Implement the Protocol.** Create a module in that stage's folder (e.g. `stages/tts/<new_impl>.py`, or `stages/speech_assessment/free_decode/<new_impl>.py` for a free-phone recognizer), write a class matching the stage's `Protocol` signature exactly (see Architecture Spec for each interface). No need to import or subclass anything from `core/interfaces.py` — `Protocol` is structural, matching by signature is enough. If it shares mechanics with an existing implementation, factor them into a private module (as `free_decode/_wav2vec2_ctc_common.py` does, D45) rather than copying.
 2. **Register it.**
    ```python
-   @register("gop_scorer", "gopft")
-   class GopFtScorer:
-       def score(self, audio, canonical_phonemes): ...
+   @register("free_decoder", "wav2vec2_newmodel")
+   class Wav2Vec2NewModelRecognizer:
+       def decode(self, audio: bytes) -> tuple[list[str], list[float], list[tuple[int, int]]]: ...
    ```
-3. **Make sure it passes the stage's shared contract test** (`tests/contract/test_<stage>_contract.py`) — this is what proves the new implementation is a valid drop-in, not just "it runs."
-4. **If the decision to adopt it isn't obvious, write an experiment**, not just a contract test pass. Add a runner under `experiments/runners/compare_<stage>.py` using the shared diagnostic set, and record the result under `experiments/results/`. See Experiment Log conventions.
-5. **Do not change `PipelineConfig`'s default until the experiment/decision is resolved.** Adding an implementation and switching the default are separate steps — keep the currently-trusted implementation as default until there's a documented reason (an experiment result or a decision log entry) to change it.
-6. **If adopted, add a Decision Log entry** referencing the experiment result that justified the switch.
+3. **Make it importable by whoever calls `build()`** (module boundary rule 5): add its `(stage, key)` entry to `pipeline.py::_STAGE_MODULES`, and for a free decoder also import it in `free_decode/__init__.py`. If it needs constructor arguments, document the `stage_kwargs` the caller must pass.
+4. **Make sure it passes the stage's shared contract test** (`tests/contract/test_<stage>_contract.py`) — this is what proves the new implementation is a valid drop-in, not just "it runs."
+5. **If the decision to adopt it isn't obvious, write an experiment**, not just a contract test pass. Add a runner under `experiments/runners/compare_<stage>.py` (e.g. `compare_free_decoder.py`) using the shared diagnostic set, and record the result under `experiments/results/`. See Experiment Log conventions.
+6. **Do not change `PipelineConfig`'s default until the experiment/decision is resolved.** Adding an implementation and switching the default are separate steps — keep the currently-trusted implementation as default until there's a documented reason (an experiment result or a decision log entry) to change it.
+7. **If adopted, add a Decision Log entry** referencing the experiment result that justified the switch (as D47 did for `wav2vec2_cnam`).
 
 ---
 
 ## Naming conventions
 
-- **Files:** `snake_case.py`, named after what they contain, not the vendor (`kaldi_gop.py` is fine since it names the specific implementation; a file with multiple candidate implementations should be split, not combined, so the registry decorator per file stays easy to find).
-- **Classes implementing a Protocol:** suffix with the role, not "Impl" — `KaldiGOPScorer`, `AzureTTSProvider`, `GeminiSentenceParser` — the class name should make sense read standalone in a stack trace or log line.
-- **Pure functions:** name as verbs describing the transformation — `apply_liaison_rules`, `assemble_units`, `align_phonemes`, `calibrate_score` — avoid vague names like `process` or `handle`.
+- **Files:** `snake_case.py`, named after what they contain (`wav2vec2_cnam.py`, `edge_tts_provider.py` name the specific implementation); a file with multiple candidate implementations should be split, not combined, so the registry decorator per file stays easy to find. Shared private helpers get a leading underscore (`_wav2vec2_ctc_common.py`).
+- **Classes implementing a Protocol:** suffix with the role, not "Impl" — `AzureTTSProvider`, `EdgeTTSProvider`, `GeminiSentenceParser`, `LexiqueEspeakG2P` — the class name should make sense read standalone in a stack trace or log line.
+- **Registry keys:** short `snake_case`, naming the implementation, not the role (`edge_tts`, `azure_neural`, `wav2vec2_cnam`) — the stage name already says the role.
+- **Pure functions:** name as verbs describing the transformation — `apply_liaison_rules`, `assemble_units`, `align_phonemes`, `calibrate_score`, `locate_spans` — avoid vague names like `process` or `handle`.
 - **Test files:** mirror the module path (`stages/chunk_analyzer/liaison/rule_engine.py` → `tests/unit/test_liaison_rules.py`); contract tests named `test_<stage>_contract.py` regardless of which implementation is under test, since the point is the shared contract, not one implementation.
 
 ---
@@ -46,30 +49,31 @@ This is the most common type of change expected (e.g. trying `gop-ft` alongside 
 
 - All public function signatures (anything called from another module, i.e. everything in `stages/*/`, `core/*`, `pipeline.py`) require type hints — this is what makes the `Protocol`-based structural typing actually catch mismatches.
 - `core/models.py`: use `@dataclass(frozen=True)` for data models that represent a completed analysis result (`Sentence`, `Chunk`, `PronunciationUnit`, `UnitResult`) — these shouldn't be mutated after construction, since they're passed across module boundaries and mutation-after-the-fact is a common source of hard-to-trace bugs. Use plain (non-frozen) dataclasses only for things actively being built up during a single function (e.g. an internal accumulator in the unit assembler).
-- Prefer `Literal[...]` over bare `str` for fields with a fixed set of values (`type: Literal["single", "liaison_group"]`, `scoring_focus: Literal[...]`) — catches typos at type-check time rather than at runtime.
+- Prefer `Literal[...]` over bare `str` for fields with a fixed set of values (`type: Literal["single", "liaison_group", "elision_group"]`, `AlignmentOp.op_type: Literal["match", "substitution", "insertion", "deletion"]`) — catches typos at type-check time rather than at runtime.
 
 ---
 
 ## Error handling
 
-- **G2P fallback chain:** if Lexique383 lookup fails, fall back to eSpeak-ng — this fallback is a designed behavior, not an exception path. `G2PProvider.phonemize()` should never raise for "word not found"; it should return the eSpeak-ng result with `source="espeak"` so the caller can decide how much to trust it, rather than the caller needing to catch an exception to detect a fallback occurred.
-- **External API failures (LLM parser, TTS, Azure-adjacent calls):** these should raise a specific exception type per stage (e.g. `ParserUnavailableError`), not propagate the raw HTTP/SDK exception — keeps `backend/api/` error handling decoupled from which vendor SDK is behind a given stage.
-- **Contract test failures vs. runtime exceptions:** a stage implementation failing its contract test (e.g. GOP scorer doesn't rank native > substitution) is a development-time signal, not something to handle with a try/except at runtime — don't write defensive runtime code to paper over a contract violation; fix the implementation or don't register it as production-ready.
+- **G2P fallback chain:** if Lexique400 lookup fails (Decision Log D30), fall back to eSpeak-ng — this fallback is a designed behavior, not an exception path. `G2PProvider.phonemize()` should never raise for "word not found"; it should return the eSpeak-ng result with `source="espeak"` so the caller can decide how much to trust it, rather than the caller needing to catch an exception to detect a fallback occurred.
+- **External API failures (LLM parser, TTS, Azure-adjacent calls):** these should raise a specific exception type per stage (e.g. `ParserUnavailableError`), not propagate the raw HTTP/SDK exception — keeps `backend/api/` error handling decoupled from which vendor SDK is behind a given stage. Network calls that can stall (edge-tts, D49) need an explicit timeout rather than relying on the library's default.
+- **Contract test failures vs. runtime exceptions:** a stage implementation failing its contract test (e.g. a free-phone recognizer "correcting" a deleted liaison back to canonical on the diagnostic set) is a development-time signal, not something to handle with a try/except at runtime — don't write defensive runtime code to paper over a contract violation; fix the implementation or don't register it as production-ready.
 
 ---
 
 ## Configuration and secrets
 
-- `PipelineConfig` (in `core/config.py`) holds *which implementation* is active per stage — not secrets, not environment-specific paths.
-- API keys (Claude API, Azure TTS/Speech) are read from environment variables inside each stage implementation's `__init__`, never hardcoded, and never passed through `PipelineConfig`. `PipelineConfig` should be safe to log or commit as a default file.
+- `PipelineConfig` (in `core/config.py`) holds *which implementation* is active per stage — not secrets, not environment-specific paths. Current defaults: `parser="gemini"`, `g2p="lexique_espeak"`, `tts="edge_tts"`, `free_decoder="wav2vec2_cnam"` (Decision Log D48).
+- Stages that need constructor arguments (paths, loaded data such as the Lexique400 lexicon) get them through `PaulouPipeline`'s `stage_kwargs`, not through `PipelineConfig` — so `PipelineConfig` stays free of paths and secrets.
+- API keys (`GEMINI_API_KEY`, `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION`) are read from environment variables inside each stage implementation's `__init__`, never hardcoded, and never passed through `PipelineConfig` or `stage_kwargs`. `PipelineConfig` should be safe to log or commit as a default file.
 - When trying an experiment that requires a new external service, the corresponding env var should be documented in `.env.example`, not just used silently.
 
 ---
 
 ## Dependency management
 
-- New dependencies (especially heavy ones — Kaldi, PyTorch, spaCy models) go in a stage-specific extras group where practical (e.g. `pip install paulou[gop-kaldi]`), so someone working only on the parser/liaison side doesn't need to install acoustic modeling dependencies. Worth setting this up before a collaborator joins for the TTS/Speech Assessment side, so their setup isn't blocked on unrelated dependencies (G2P, chunking) and vice versa.
-- Pin versions for anything model-related (acoustic models, HuggingFace model revisions) — an unpinned model update changing GOP score distributions silently would invalidate calibration (Decision Log D11) without any code change to point to.
+- New dependencies (especially heavy ones — PyTorch/transformers for the free-phone recognizers, spaCy models) go in a stage-specific extras group where practical (e.g. `pip install paulou[free-decode]`), so someone working only on the parser/liaison side doesn't need to install acoustic modeling dependencies. Not set up yet (Roadmap); worth doing before a collaborator joins for the TTS/Speech Assessment side, so their setup isn't blocked on unrelated dependencies (G2P, chunking) and vice versa.
+- Pin versions for anything model-related (acoustic models, HuggingFace model revisions) — an unpinned model update silently changing the recognizer's confidence distributions would invalidate calibration (Decision Log D11, D39) without any code change to point to.
 
 ---
 

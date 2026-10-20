@@ -22,10 +22,10 @@ User input (sentence)
 [4] Practice UI            — chunk-level and unit-level drilling
         │
         ▼
-[5] Speech Assessment      — SUPERSEDED design shown; see Decision Log
-                              D36 for the current direction (single
-                              free-decode + 3-way alignment), not yet
-                              fully specced.
+[5] Speech Assessment      — single free-decode + 3-way alignment
+                              (Decision Log D36-D47); implemented and
+                              run end to end (D48, D50). Section 5
+                              (redesigned) below is the current spec.
 ```
 
 ---
@@ -33,18 +33,12 @@ User input (sentence)
 ## Data model
 
 ```python
-Sentence {
-    id: str
-    text: str
-    chunks: list[Chunk]
-}
-
-Chunk {
-    id: str
-    text: str
-    ipa_full: str
-    stress_syllable: str          # rhythmic stress falls on the chunk's final syllable
-    pronunciation_units: list[PronunciationUnit]
+Sentence { text: str, chunks: list[Chunk] }          # no id (D48)
+Chunk    { text: str, units: list[PronunciationUnit] }  # field is `units`; no id, ipa_full or stress_syllable (D48)
+ReferenceAudio {                                        # D48
+    audio: bytes                                        # one full-sentence TTS pass (format: pipeline.AUDIO_FORMAT = "mp3")
+    chunk_spans: list[tuple[int, int]]                  # (start_ms, end_ms) per chunk
+    unit_spans: dict[str, tuple[int, int]]              # keyed by sentence-unique unit id
 }
 
 PronunciationUnit {
@@ -57,6 +51,7 @@ PronunciationUnit {
     note: str                     # human-readable pedagogical note
     scoring_focus: Literal["phoneme_accuracy", "liaison_presence_and_continuity", "elision_correctness"]
 }
+# Note: unit ids are `c{chunk}_unit_{n}` after `analyze_sentence` (chunk-local `unit_{n}` inside `assemble_units`)
 
 WordTiming {
     word: str
@@ -79,12 +74,23 @@ LiaisonDecision {
     rule_type: Literal["obligatoire", "interdite", "facultative"]
 }
 
+AlignmentOp {                    # D37
+    op_type: Literal["match", "substitution", "insertion", "deletion"]
+    unit_id: str
+    canonical_phoneme: str | None   # None only for insertion
+    decoded_phoneme: str | None     # None only for deletion
+    confidence: float | None        # None only for deletion
+    start_ms: int | None            # None only for deletion
+    end_ms: int | None
+}
+
+ScoredAlignmentOp { op: AlignmentOp, accuracy_score: int }     # D40
+
 UnitResult {
     unit_id: str
-    calibrated_score: int
-    phone_scores: list[PhoneScore] | None      # populated for "single" units
-    alignment_ops: list[AlignmentOp] | None    # populated for "liaison_group" units (DEL/INS/match)
-    feedback_text: str
+    calibrated_score: int          # MEAN of scored_ops' accuracy_score (D40)
+    scored_ops: list[ScoredAlignmentOp]
+    feedback_text: str             # from generate_feedback (D41)
 }
 
 Attempt {
@@ -104,8 +110,8 @@ Attempt {
 ### 1. Sentence Parser
 - **Input:** raw sentence text
 - **Output:** `list[str]` (chunk texts)
-- **Implementation:** LLM call (Claude API), prompted to split by rhythmic group (groupe rythmique), not punctuation
-- **Nature:** stochastic — cannot be unit-tested for exact output; validated via contract/invariant tests + qualitative notebook review (see Testing Conventions note)
+- **Implementation:** LLM call (Gemini API, GeminiSentenceParser — Decision Log D27), prompted to split by rhythmic group (groupe rythmique), not punctuation
+- **Nature:** Nature: stochastic — the same sentence can produce different chunks on different runs (observed, D50)
 - **Interface:**
   ```python
   class SentenceParser(Protocol):
@@ -117,7 +123,7 @@ Attempt {
 **2a. Word G2P**
 - **Input:** single word
 - **Output:** `tuple[list[str], str]` — phonemes, source (`"dict"` or `"espeak"`)
-- **Implementation:** Lexique383 (primary, dictionary lookup) → eSpeak-ng (fallback for out-of-dictionary words: rare words, proper nouns)
+- **Implementation:** Lexique400 (Decision Log D30) (primary, dictionary lookup) → eSpeak-ng (fallback for out-of-dictionary words: rare words, proper nouns). The registered class needs its lexicon passed as a constructor kwarg `(lexicon=load_lexique400(path))`; `PaulouPipeline` does this through `stage_kwargs` (D48)
 - **Nature:** deterministic lookup
 - **Interface:**
   ```python
@@ -159,7 +165,7 @@ Attempt {
 ### 3. TTS
 - **Input:** full sentence text, target rate
 - **Output:** `tuple[bytes, list[WordTiming]]` — audio + word-boundary timestamps
-- **Implementation:** Azure Neural TTS (fr-FR), one synthesis pass per sentence (see D5 in decision log). Chunk-level and unit-level audio clips are sliced from this single pass via timestamps, with silence padding + fade-in/out at cut points.
+- **Implementation:** two registered providers — `AzureTTSProvider` (`azure_neural`, needs AZURE_SPEECH_KEY/REGION) and `EdgeTTSProvider` (`edge_tts`, unofficial, no key; the `PipelineConfig` default) — Decision Log D31. One synthesis pass per sentence (D5); `edge_tts` has an optional `timing_offset_ms` (D49)
 - **Slow playback:** separate synthesis pass via SSML `<prosody rate="0.7">`, not time-stretching (see D6)
 - **Caching:** keyed by `hash(text + voice_id + rate)` (see D7)
 - **Interface:**
@@ -167,6 +173,11 @@ Attempt {
   class TTSProvider(Protocol):
       def synthesize(self, text: str, rate: float = 1.0) -> tuple[bytes, list[WordTiming]]: ...
   ```
+**3b. Span location** (`stages/tts/timing_alignment.py::locate_spans`, pure, D48)
+- **Input:** `Sentence`, `list[WordTiming]`
+- **Output:** `(chunk_spans, unit_spans)` in the TTS audio's timeline
+- **Mechanism:** compares normalized character streams (lowercase, letters and digits only), not words; strict — `ValueError` if the streams differ. Word-granular: a TTS token spanning two units gives both the same span.
+- **Known accuracy issue:** provider word windows can end before the word does (D49); cut with `slice_audio` after any needed offset.
 
 ### 4. Practice UI
 - Two levels: chunk-level (listen + record the whole chunk) and unit-level (drill down to a single `PronunciationUnit`, shown with IPA + syllable breakdown + stress marking)
@@ -239,7 +250,7 @@ Attempt {
 **5f. Feedback templating**
 - **Input:** `UnitResult`
 - **Output:** `feedback_text: str`
-- **Mechanism:** threshold-based template lookup (see table below), not raw score display
+- **Mechanism:** threshold-based template lookup (see table below), not raw score display.
 - **Nature:** pure function
 
 | Score range | Feedback template (single) | Feedback template (liaison) |
@@ -250,12 +261,9 @@ Attempt {
 
 ### 5 (redesigned) — Single free-decode + 3-way alignment pipeline (Decision Log D36)
 
-Replaces stages 5a–5f above in their entirety. Implemented so far:
-`align_phonemes` (alignment), `score_alignment_op` + `calibrate_score`
-(scoring), `merge_to_unit_result` (merge). Not yet implemented: a real
-`FreePhoneRecognizer`, and feedback templating.
+Replaces stages 5a–5f above in their entirety. Implemented: `align_phonemes` (D38), `score_alignment_op` + `calibrate_score` (D39), `merge_to_unit_result` / `merge_chunk_results` (D40), `generate_feedback` (D41), `score_chunk` (D42), and two real `FreePhoneRecognizers` (D45; `wav2vec2_cnam` is the default, D47). Calibration statistics (`phone_stats`) from a native corpus do not exist yet (D11/D24).
 
-**5b'. Free Phone Recognizer** (Protocol only, no implementation yet)
+**5b'. Free Phone Recognizer** (implemented, D45: `wav2vec2_cnam` and `wav2vec2_bofenghuang`, sharing `stages/speech_assessment/free_decode/_wav2vec2_ctc_common.py`; default `wav2vec2_cnam` per D47)
 - **Input:** `audio: bytes`
 - **Output:** `tuple[list[str], list[float], list[tuple[int, int]]]` —
   decoded phone sequence, per-position confidence (the decoder's own
@@ -270,10 +278,11 @@ Replaces stages 5a–5f above in their entirety. Implemented so far:
   implementation existed yet when this was simplified, so it's a free
   edit, not a breaking change.
 - **Interface:**
-```python
+  ```python
   class FreePhoneRecognizer(Protocol):
       def decode(self, audio: bytes) -> tuple[list[str], list[float], list[tuple[int, int]]]: ...
-```
+  ```
+- **Mechanism:** CTC greedy decode, repeated frames collapsed, blank/delimiter dropped, combining marks recomposed, confidence = MEAN over a phone's frames; audio resampled to 16 kHz.
 
 **5c'. Alignment** (`stages/speech_assessment/align.py::align_phonemes`) — IMPLEMENTED
 - **Input:** `canonical_phonemes: list[str], unit_ids: list[str]` (parallel
@@ -313,7 +322,7 @@ Replaces stages 5a–5f above in their entirety. Implemented so far:
   unit_id — checked), plus `phone_stats`/`fallback_phone_class`.
 - **Output:** `UnitResult`, `calibrated_score` = MEAN of every op's
   `accuracy_score` (Decision Log D33's choice, carried over unchanged).
-- `feedback_text` is currently always `""` — see 5f' below.
+- `feedback_text` is produced by `generate_feedback` (5f') inside `merge_to_unit_result`.
 
 **5f'. Feedback** (`stages/speech_assessment/feedback.py::generate_feedback`) — IMPLEMENTED
 - **Input:** `calibrated_score: int` (unit's MEAN, from 5e'),
@@ -334,63 +343,139 @@ Replaces stages 5a–5f above in their entirety. Implemented so far:
 ## Codebase structure
 
 ```
-paulou/
-  core/
-    models.py            # Sentence, Chunk, PronunciationUnit, LiaisonDecision, UnitResult, Attempt
-    interfaces.py         # Protocol definitions for swappable stages
-    registry.py            # register()/build() factory pattern
-    config.py              # PipelineConfig — selects active implementation per stage
-  stages/
-    parsing/
-      gemini_parser.py      # GeminiSentenceParser implements SentenceParser (Decision Log D27)
-    chunk_analyzer/         # stage 2's sub-modules, nested here (Decision Log D29) —
-                             # was previously flat under stages/, inconsistent with
-                             # how speech_assessment/ nests its own sub-modules
-      g2p/
-        lexique_espeak.py    # LexiqueEspeakG2P implements G2PProvider
-      pos/
-        spacy_tagger.py
-      liaison/
-        rule_engine.py        # pure function, no registry
-      elision/
-        elision.py             # pure function, no registry (stage 2c-bis, Decision Log D28)
-      assembly/
-        unit_assembler.py     # pure function, no registry
-    tts/
-      azure_tts.py           # implements TTSProvider
-    speech_assessment/
-      free_decode/
-        wav2vec2_cnam.py      # implements FreePhoneRecognizer — Stage B,
-                               # not yet built; signature simplified per
-                               # Decision Log D36 (confidence + boundaries,
-                               # not full posterior — see stage 5b')
-      align.py                # pure — align_phonemes, 3-way Levenshtein
-                               # (match/substitution/insertion/deletion),
-                               # IMPLEMENTED per Decision Log D36
-      scoring.py               # pure — score_alignment_op, IMPLEMENTED
-                               # (new file, not in the original tree)
-      merge.py                # pure — merge_to_unit_result, IMPLEMENTED
-                               # (MEAN aggregation, Decision Log D33, reused)
-      calibration.py          # pure — calibrate_score, kept and reused
-                               # (renamed raw_gop -> raw_value, D36)
-      feedback.py             # pure — NOT YET IMPLEMENTED (deleted per
-                               # D36, redesign pending — see stage 5f')
-  pipeline.py             # PaulouPipeline — single orchestration entry point
-  backend/
-    api/
-      routers/               # sentences.py, attempts.py, progress.py
-      schemas.py             # Pydantic DTOs, separate from core/models.py (see D14)
-      dependencies.py
-      main.py
-    db/
-      models.py              # SQLAlchemy ORM, separate from core/models.py
-      repository.py
-      migrations/
-    tasks/
-      tts_pregenerate.py     # background job for pre-generating TTS for common sentences
-  frontend/                  # not yet started
-  tests/                     # see Testing Conventions note
-  experiments/               # see Experiment Log note
+Paulou/                                    # repo root
+├── README.md
+├── SETUP.md †                             # local dev setup
+├── LICENSE [ ]                            # FSL text with Change Date / Change License still to fill in
+├── requirements-dev.txt †
+├── .env.example †                         # GEMINI_API_KEY, AZURE_SPEECH_KEY / AZURE_SPEECH_REGION
+├── .gitignore †
+├── docs/
+│   ├── assets/hero.jpg †
+│   ├── roadmap.md                         # = paulou-roadmap.md in the Project
+│   └── pipeline_cli.md (new)              # installation + commands to test the whole pipeline (D50)
+└── paulou/                                # the Python package; run everything from here
+    ├── pipeline.py (new)                  # PaulouPipeline, AUDIO_FORMAT, _STAGE_MODULES (D48)
+    │
+    ├── core/
+    │   ├── __init__.py
+    │   ├── models.py                      # LiaisonDecision, PronunciationUnit, AlignmentOp, ScoredAlignmentOp,
+    │   │                                  #   UnitResult, WordTiming, Chunk, Sentence, ReferenceAudio (last 3: D48);
+    │   │                                  #   RawPhoneScore / PhoneScore kept dormant (D36/D37)
+    │   ├── interfaces.py                  # Protocols: SentenceParser, G2PProvider, TTSProvider, FreePhoneRecognizer;
+    │   │                                  #   GOPScorer dormant (D36)
+    │   ├── registry.py                    # register(), build(), is_registered() (new)
+    │   └── config.py (new)                # PipelineConfig: parser, g2p, tts, free_decoder (D48)
+    │
+    ├── data/                              # [git-ignored]
+    │   └── Lexique400.tsv †               # download separately (D30)
+    │
+    ├── stages/
+    │   ├── __init__.py
+    │   ├── parsing/
+    │   │   ├── __init__.py
+    │   │   └── gemini_parser.py           # GeminiSentenceParser, register("parser", "gemini") (D27)
+    │   ├── chunk_analyzer/                # stage 2 (D29)
+    │   │   ├── __init__.py
+    │   │   ├── chunk_analyzer.py          # analyze_chunk(): POS -> liaison -> G2P -> assemble
+    │   │   ├── g2p/
+    │   │   │   ├── __init__.py
+    │   │   │   └── lexique_espeak.py      # LexiqueEspeakG2P, register("g2p", "lexique_espeak");
+    │   │   │                              #   load_lexique400() now public (D48)
+    │   │   ├── pos/
+    │   │   │   ├── __init__.py
+    │   │   │   └── spacy_tagger.py        # spaCy fr_core_news_sm, plain class (D26)
+    │   │   ├── liaison/
+    │   │   │   ├── __init__.py
+    │   │   │   └── rule_engine.py         # pure; obligatoire / interdite / facultative (D4, D21, D22)
+    │   │   ├── elision/
+    │   │   │   ├── __init__.py
+    │   │   │   └── elision.py             # pure; closed-list clitics (D28)
+    │   │   └── assembly/
+    │   │       ├── __init__.py
+    │   │       └── unit_assembler.py      # pure; single / liaison_group / elision_group (D23)
+    │   ├── tts/                           # stage 3
+    │   │   ├── __init__.py
+    │   │   ├── azure_tts.py               # AzureTTSProvider, register("tts", "azure_neural")
+    │   │   ├── edge_tts_provider.py       # EdgeTTSProvider, register("tts", "edge_tts");
+    │   │   │                              #   async stream() instead of stream_sync(), timing_offset_ms (D49)
+    │   │   ├── caching.py                 # CachingTTSProvider, hash(text|voice|rate) (D7)
+    │   │   ├── audio_slicing.py           # slice_audio(): padding + fades (D5)
+    │   │   └── timing_alignment.py (new)  # locate_spans(): chunk/unit spans from word timings (D48)
+    │   └── speech_assessment/             # stage 5 (D36-D42)
+    │       ├── __init__.py
+    │       ├── align.py                   # align_phonemes(): 3-way Levenshtein (D38)
+    │       ├── scoring.py                 # score_alignment_op() (D39)
+    │       ├── calibration.py             # PhoneStats, calibrate_score() (D11, D24)
+    │       ├── merge.py                   # merge_to_unit_result(), merge_chunk_results() (D40);
+    │       │                              #   calls generate_feedback
+    │       ├── feedback.py                # generate_feedback() (D41)
+    │       ├── speech_assessment.py       # score_chunk() (D42)
+    │       └── free_decode/ †
+    │           ├── __init__.py            # imports both recognizers so @register runs (D45)
+    │           ├── _wav2vec2_ctc_common.py   # resample, ctc_collapse, recompose_combining_marks, base class
+    │           ├── wav2vec2_cnam.py          # register("free_decoder", "wav2vec2_cnam")  <- default (D47)
+    │           └── wav2vec2_bofenghuang.py   # register("free_decoder", "wav2vec2_bofenghuang")
+    │
+    ├── tests/                             # pass/fail only, runs in CI (D16)
+    │   ├── __init__.py
+    │   ├── Test.md                        # README.md references tests/README.md: check which name is right
+    │   ├── unit/                          # fast, no network / models
+    │   │   ├── test_liaison_rules.py
+    │   │   ├── test_elision.py
+    │   │   ├── test_unit_assembler.py
+    │   │   ├── test_g2p.py
+    │   │   ├── test_alignment.py
+    │   │   ├── test_scoring.py
+    │   │   ├── test_calibration.py
+    │   │   ├── test_merge.py
+    │   │   ├── test_feedback_templates.py
+    │   │   ├── test_speech_assessment.py
+    │   │   ├── test_audio_slicing.py
+    │   │   ├── test_tts_caching.py
+    │   │   ├── test_registry.py (new)
+    │   │   ├── test_timing_alignment.py (new)
+    │   │   ├── test_edge_tts_provider.py (new)   # fake stream; hang regression
+    │   │   ├── test_pipeline.py (new)            # stub stages
+    │   │   └── test_pipeline_cli.py (new)        # stub pipeline; needs ffmpeg + soundfile
+    │   ├── model/                         # loads the real spaCy model
+    │   │   ├── test_pos_tagger.py
+    │   │   └── test_chunk_analyzer.py
+    │   ├── contract/                      # real Gemini / Azure / edge-tts
+    │   │   ├── test_chunking_invariants.py
+    │   │   ├── test_tts_provider_contract.py
+    │   │   └── test_edge_tts_provider_contract.py
+    │   ├── fixtures/
+    │   │   ├── g2p_golden.tsv
+    │   │   └── diagnostic_audio/ †        # promoted 12-case audio + metadata.json, committed (D43)
+    │   ├── api/ [ ]
+    │   └── db/ [ ]
+    │
+    ├── experiments/                       # never in CI (D16)
+    │   ├── __init__.py
+    │   ├── README.md †
+    │   ├── requirements-experiments.txt †
+    │   ├── diagnostic_set/ †              # D43 / D44
+    │   │   ├── __init__.py
+    │   │   ├── cases.py                   # 12 cases (Tranche 1 + 2)
+    │   │   ├── CASES.md
+    │   │   ├── perturbation.py
+    │   │   ├── piper_phonemes.py
+    │   │   ├── build_diagnostic_audio.py
+    │   │   └── *.onnx, *.onnx.json        # [git-ignored] Piper voice
+    │   ├── runners/
+    │   │   ├── __init__.py
+    │   │   ├── canonicalizer_bias_check.py †   # D46
+    │   │   ├── compare_free_decoder.py †       # D45-D47
+    │   │   └── pipeline_cli.py (new)           # analyze / reference / timings / selftest / score (D50)
+    │   ├── notebooks/ [ ]
+    │   └── results/
+    │       ├── canonicalizer_bias/ †      # *.json + RESULTS.md committed (D47)
+    │       ├── diagnostic_set/ †          # *.wav git-ignored, metadata.json committed
+    │       └── pipeline_cli/              # *.mp3 / *.wav git-ignored, *.json committed
+    │
+    ├── backend/ [ ]                       # FastAPI: api/ (routers, schemas, dependencies, main), db/, tasks/ (D13-D15)
+    └── frontend/ [ ]
 ```
 
 ### Registry pattern (example)
@@ -411,7 +496,7 @@ def build(stage: str, key: str, **kwargs):
 
 ```python
 # stages/speech_assessment/gop/kaldi_gop.py
-@register("gop_scorer", "kaldi")
+@register("free_decoder", "wav2vec2_cnam")
 class KaldiGOPScorer:
     def score(self, audio, canonical_phonemes): ...
 ```
@@ -422,8 +507,7 @@ class KaldiGOPScorer:
 class PipelineConfig:
     parser: str = "gemini"
     g2p: str = "lexique_espeak"
-    tts: str = "azure_neural"
-    gop_scorer: str = "kaldi"
+    tts: str = "edge_tts"
     free_decoder: str = "wav2vec2_cnam"
 ```
 
@@ -434,18 +518,18 @@ Switching implementations (e.g. Kaldi → `gop-ft`) requires changing one config
 ```python
 # pipeline.py
 class PaulouPipeline:
-    def __init__(self, config: PipelineConfig):
-        self.parser = build("parser", config.parser)
-        self.g2p = build("g2p", config.g2p)
-        self.tts = build("tts", config.tts)
-        self.gop_scorer = build("gop_scorer", config.gop_scorer)
-        self.free_decoder = build("free_decoder", config.free_decoder)
+    def __init__(self, config, phone_stats, fallback_phone_class=None,
+                 tts_cache_dir=None, stage_kwargs=None): ...   # stages built lazily
 
     def analyze_sentence(self, text: str) -> Sentence: ...
-    def score_attempt(self, unit: PronunciationUnit, audio: bytes) -> UnitResult: ...
+    def synthesize_reference(self, sentence: Sentence, rate: float = 1.0) -> ReferenceAudio: ...
+    def score_attempt(self, units: list[PronunciationUnit], audio: bytes) -> list[UnitResult]: ...
+    @staticmethod
+    def slice_reference(reference: ReferenceAudio, span: tuple[int, int]) -> bytes: ...
 ```
 
 `PaulouPipeline` only accepts/returns plain data models — no HTTP, DB, or UI awareness. Notebooks call it directly; the backend wraps it in a thin API layer (see D13 in decision log).
+Note: `_STAGE_MODULES` (the (stage, key) -> module map used so a registered implementation's module gets imported) and `stage_kwargs`.
 
 ### API design note (tentative — see D15 in decision log)
 `POST /attempts` is planned to return `{attempt_id, status: "processing"}` immediately, with scoring run as a background job and the result retrieved via polling or a WebSocket push — pending latency benchmarking of the GOP/free-decode pipeline.
