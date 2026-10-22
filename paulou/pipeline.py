@@ -40,6 +40,7 @@ from core.interfaces import FreePhoneRecognizer, G2PProvider, SentenceParser, TT
 from core.models import Chunk, PronunciationUnit, ReferenceAudio, Sentence, UnitResult
 from core.registry import build, is_registered
 from stages.chunk_analyzer.chunk_analyzer import analyze_chunk
+from stages.parsing.caching import CachingSentenceParser
 from stages.speech_assessment.calibration import PhoneStats
 from stages.speech_assessment.speech_assessment import score_chunk
 from stages.tts.audio_slicing import slice_audio
@@ -74,12 +75,14 @@ class PaulouPipeline:
         phone_stats: dict[str, PhoneStats],
         fallback_phone_class: dict[str, str] | None = None,
         tts_cache_dir: str | None = None,
+        parser_cache_dir: str | None = None,
         stage_kwargs: dict[str, dict] | None = None,
     ):
         self.config = config
         self.phone_stats = phone_stats
         self.fallback_phone_class = fallback_phone_class
         self.tts_cache_dir = tts_cache_dir
+        self.parser_cache_dir = parser_cache_dir
         # Constructor kwargs per stage name ("parser", "g2p", "tts",
         # "free_decoder"). Needed because `build()` constructs with no
         # arguments by default, but e.g. the G2P needs its lexicon: found by
@@ -91,7 +94,13 @@ class PaulouPipeline:
 
     @cached_property
     def parser(self) -> SentenceParser:
-        return _build_stage("parser", self.config.parser, **self._kwargs("parser"))
+        parser = _build_stage("parser", self.config.parser, **self._kwargs("parser"))
+        if self.parser_cache_dir is not None:
+            # D52/D55: stable chunking per sentence text, and no repeat LLM call.
+            parser = CachingSentenceParser(
+                parser, self.parser_cache_dir, namespace=self.config.parser
+            )
+        return parser
 
     @cached_property
     def g2p(self) -> G2PProvider:

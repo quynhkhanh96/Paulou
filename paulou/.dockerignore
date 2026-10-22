@@ -1,0 +1,9 @@
+**/__pycache__
+**/*.pyc
+.git
+data
+experiments
+tests
+frontend
+docs
+*.zip

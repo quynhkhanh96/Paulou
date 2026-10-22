@@ -1,0 +1,36 @@
+# Local, single-user MVP (Decision Log D53). From the package directory:
+#   docker compose up --build        then open http://localhost:8080
+# Needs: data/Lexique400.tsv (git-ignored, D30) and GEMINI_API_KEY in ../.env
+# (repo root, same file the CLI uses). First start downloads the wav2vec2 model
+# into the hf-cache volume and loads it (~12 s, D52): the UI shows
+# "Loading the speech model" until /api/health says ready.
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      PAULOU_LEXIQUE_PATH: /app/data/Lexique400.tsv
+      PAULOU_CACHE_DIR: /app/data/cache
+      # PAULOU_PHONE_STATS_PATH: /app/data/phone_stats.json   # real calibration table; unset = placeholder
+      PAULOU_TIMING_OFFSET_MS: "50"
+    volumes:
+      - ./data:/app/data
+      - hf-cache:/models
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+volumes:
+  hf-cache:

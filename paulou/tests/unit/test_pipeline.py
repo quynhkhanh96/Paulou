@@ -200,3 +200,23 @@ def test_stage_kwargs_are_passed_to_the_stage_constructor():
     pipe.g2p
 
     assert received == {"lexicon": {"a": ["a"]}}
+
+
+def test_parser_cache_dir_wraps_parser_in_cache(tmp_path):
+    from stages.parsing.caching import CachingSentenceParser
+
+    _register_stubs()
+    pipe = PaulouPipeline(CONFIG, STATS, parser_cache_dir=str(tmp_path))
+
+    assert isinstance(pipe.parser, CachingSentenceParser)
+    assert pipe.parser.parse("Bonjour le monde") == ["Bonjour", "le monde"]
+    assert list(tmp_path.glob("*.json"))
+
+
+def test_no_parser_cache_dir_leaves_parser_unwrapped():
+    from stages.parsing.caching import CachingSentenceParser
+
+    _register_stubs()
+    pipe = PaulouPipeline(CONFIG, STATS)
+
+    assert not isinstance(pipe.parser, CachingSentenceParser)

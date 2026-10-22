@@ -1,0 +1,27 @@
+# Backend image. Build context: the package directory (the one containing core/,
+# stages/, backend/, pipeline.py). Data (Lexique400, caches) and the Hugging
+# Face model cache are NOT baked in: they are mounted, see docker-compose.yml.
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/models
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg espeak-ng libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY backend/requirements.txt backend/requirements.txt
+RUN pip install --extra-index-url https://download.pytorch.org/whl/cpu torch \
+    && pip install -r backend/requirements.txt \
+    && python -m spacy download fr_core_news_sm
+
+COPY core core
+COPY stages stages
+COPY backend backend
+COPY pipeline.py pipeline.py
+
+EXPOSE 8000
+CMD ["uvicorn", "backend.api.main:create_default_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

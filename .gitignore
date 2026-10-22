@@ -57,7 +57,8 @@ models/
 *.wav
 *.mp3
 *.flac
-tts_cache/
+paulou/tts_cache/
+paulou/data/cache/
 
 # NOTE: the diagnostic audio set under paulou/tests/fixtures/diagnostic_audio/
 # (native/substitution/deletion/insertion) is explicitly required to be
