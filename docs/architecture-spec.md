@@ -93,6 +93,9 @@ UnitResult {
     feedback_text: str             # from generate_feedback (D41)
 }
 
+# Attempt is NOT used by the MVP (D53): no DB and no user accounts yet, scoring results
+# are returned directly by POST /attempts and not persisted. Kept as the target shape
+# for when progress tracking / attempt history is designed (Roadmap, Deferred).
 Attempt {
     id: str
     user_id: str
@@ -180,8 +183,10 @@ Attempt {
 - **Known accuracy issue:** provider word windows can end before the word does (D49); cut with `slice_audio` after any needed offset.
 
 ### 4. Practice UI
-- Two levels: chunk-level (listen + record the whole chunk) and unit-level (drill down to a single `PronunciationUnit`, shown with IPA + syllable breakdown + stress marking)
-- Not yet built — see Roadmap note
+- Two levels: chunk-level (listen + record the whole chunk) and unit-level (drill down to a single `PronunciationUnit`)
+- **Built for the MVP** as a Vite + React + TypeScript app in `frontend/` (D58), talking to the API below. What it shows per unit: words, IPA, unit type / `scoring_focus`, normal and slow reference audio, recording, then the alignment ops and `feedback_text`.
+- **Not shown:** syllable breakdown and stress marking. `PronunciationUnit.syllables` is always `[]` and no stage produces stress (open question in the Roadmap), so there is nothing to display. Numeric scores are hidden until a real `phone_stats` file is loaded (`calibrated: false`, D57).
+- The UI also surfaces hints for known limitations (cross-chunk liaison D51, optional schwa, nasal-vowel bias D47); this does not resolve them.
 
 ### 5. Speech Assessment (composite stage — two parallel branches + merge)
 
@@ -338,6 +343,7 @@ Replaces stages 5a–5f above in their entirety. Implemented: `align_phonemes` (
   insertion/deletion bypass bracketing entirely, since alignment already
   gives more specific information than a score bracket would preserve.
 - See Decision Log D41.
+- **Caveat under placeholder stats (D50, D57):** the overview sentence and the bracket-grouped `match` sentences depend on `accuracy_score`, which is computed from placeholder `phone_stats` until the native-corpus calibration exists. In that state those parts of `feedback_text` are not meaningful; only the structural sentences (deletion / insertion / substitution) are reliable. The API reports this through `calibrated: false` and the UI must not present the overview or bracket wording as a real assessment.
 ---
 
 ## Codebase structure
@@ -349,11 +355,13 @@ Paulou/                                    # repo root
 ├── LICENSE [ ]                            # FSL text with Change Date / Change License still to fill in
 ├── requirements-dev.txt †
 ├── .env.example †                         # GEMINI_API_KEY, AZURE_SPEECH_KEY / AZURE_SPEECH_REGION
-├── .gitignore †
+├── .gitignore †                           # add data/cache/ (parser cache lives under data/, D55)
+├── docker-compose.yml, Dockerfile.backend, .dockerignore   # D53
 ├── docs/
 │   ├── assets/hero.jpg †
 │   ├── roadmap.md                         # = paulou-roadmap.md in the Project
-│   └── pipeline_cli.md (new)              # installation + commands to test the whole pipeline (D50)
+│   ├── pipeline_cli.md (new)              # installation + commands to test the whole pipeline (D50)
+│   └── web_app.md (new)                   # running the backend + frontend (D53, D58)
 └── paulou/                                # the Python package; run everything from here
     ├── pipeline.py (new)                  # PaulouPipeline, AUDIO_FORMAT, _STAGE_MODULES (D48)
     │
@@ -374,7 +382,8 @@ Paulou/                                    # repo root
     │   ├── __init__.py
     │   ├── parsing/
     │   │   ├── __init__.py
-    │   │   └── gemini_parser.py           # GeminiSentenceParser, register("parser", "gemini") (D27)
+    │   │   ├── gemini_parser.py           # GeminiSentenceParser, register("parser", "gemini") (D27)
+    │   │   └── caching.py (new)           # CachingSentenceParser, cache by sentence text (D55)
     │   ├── chunk_analyzer/                # stage 2 (D29)
     │   │   ├── __init__.py
     │   │   ├── chunk_analyzer.py          # analyze_chunk(): POS -> liaison -> G2P -> assemble
@@ -433,6 +442,7 @@ Paulou/                                    # repo root
     │   │   ├── test_speech_assessment.py
     │   │   ├── test_audio_slicing.py
     │   │   ├── test_tts_caching.py
+    │   │   ├── test_parser_caching.py (new)      # D55
     │   │   ├── test_registry.py (new)
     │   │   ├── test_timing_alignment.py (new)
     │   │   ├── test_edge_tts_provider.py (new)   # fake stream; hang regression
@@ -447,9 +457,12 @@ Paulou/                                    # repo root
     │   │   └── test_edge_tts_provider_contract.py
     │   ├── fixtures/
     │   │   ├── g2p_golden.tsv
+    │   │   ├── browser_recording.webm (new)   # real MediaRecorder output (D56)
     │   │   └── diagnostic_audio/ †        # promoted 12-case audio + metadata.json, committed (D43)
-    │   ├── api/ [ ]
-    │   └── db/ [ ]
+    │   ├── api/ (new)                     # stub-pipeline API tests (real score_chunk / locate_spans / slice_audio);
+    │   │   │                              #   conftest.py builds the stub pipeline
+    │   │   └── e2e_app.py                 # app used by the browser smoke test (frontend/e2e/smoke.mjs)
+    │   └── db/ [ ]                        # not needed: no DB in the MVP (D53)
     │
     ├── experiments/                       # never in CI (D16)
     │   ├── __init__.py
@@ -474,8 +487,20 @@ Paulou/                                    # repo root
     │       ├── diagnostic_set/ †          # *.wav git-ignored, metadata.json committed
     │       └── pipeline_cli/              # *.mp3 / *.wav git-ignored, *.json committed
     │
-    ├── backend/ [ ]                       # FastAPI: api/ (routers, schemas, dependencies, main), db/, tasks/ (D13-D15)
-    └── frontend/ [ ]
+    ├── backend/                           # FastAPI (D13, D14, D52-D54); no db/ and no tasks/ in the MVP (D52, D53)
+    │   ├── requirements.txt, requirements-dev.txt
+    │   └── api/
+    │       ├── main.py                    # create_app(), create_default_app() (uvicorn --factory)
+    │       ├── settings.py                # env-driven paths and limits
+    │       ├── schemas.py                 # API DTOs, separate from core models (D14)
+    │       ├── mappers.py                 # core models -> DTOs; normalize_text, sentence_id_for
+    │       ├── audio_convert.py           # browser recording -> WAV (D56)
+    │       ├── phone_stats.py             # load table / placeholder (D24, D50)
+    │       ├── store.py                   # in-memory LRU of prepared sentences
+    │       ├── dependencies.py            # AppState, warm-up, api_error
+    │       ├── pipeline_factory.py        # builds the real PaulouPipeline
+    │       └── routers/                   # health.py, sentences.py, attempts.py
+    └── frontend/                          # Vite + React + TS (D58): src/, e2e/, Dockerfile, nginx.conf
 ```
 
 ### Registry pattern (example)
@@ -519,7 +544,8 @@ Switching implementations (e.g. Kaldi → `gop-ft`) requires changing one config
 # pipeline.py
 class PaulouPipeline:
     def __init__(self, config, phone_stats, fallback_phone_class=None,
-                 tts_cache_dir=None, stage_kwargs=None): ...   # stages built lazily
+                 tts_cache_dir=None, parser_cache_dir=None,    # parser_cache_dir: D55
+                 stage_kwargs=None): ...                       # stages built lazily
 
     def analyze_sentence(self, text: str) -> Sentence: ...
     def synthesize_reference(self, sentence: Sentence, rate: float = 1.0) -> ReferenceAudio: ...
@@ -531,5 +557,10 @@ class PaulouPipeline:
 `PaulouPipeline` only accepts/returns plain data models — no HTTP, DB, or UI awareness. Notebooks call it directly; the backend wraps it in a thin API layer (see D13 in decision log).
 Note: `_STAGE_MODULES` (the (stage, key) -> module map used so a registered implementation's module gets imported) and `stage_kwargs`.
 
-### API design note (tentative — see D15 in decision log)
-`POST /attempts` is planned to return `{attempt_id, status: "processing"}` immediately, with scoring run as a background job and the result retrieved via polling or a WebSocket push — pending latency benchmarking of the GOP/free-decode pipeline.
+### API (D52-D54, D57)
+All under /api; errors are {detail: {code, message}}.
+GET  /health                      -> {status: warming_up|ready|error, calibrated, detail}
+POST /sentences {text}            -> {sentence_id, text, chunks: [{index, text, units: [{id, type, words, phonemes, ipa, liaison_consonant, scoring_focus}]}]}
+GET  /sentences/{id}/audio        ?speed=normal|slow [&chunk=N | &unit=ID] -> audio/mpeg
+POST /attempts (multipart)        sentence_id, chunk_index | unit_id, audio -> {sentence_id, chunk_index, unit_id, calibrated, results: [{unit_id, score|null, feedback_text, ops: [{op_type, canonical_phoneme, decoded_phoneme, start_ms, end_ms, score|null}]}]}
+Scoring is synchronous (D52, resolves D15). The speech model is built and warmed in a background thread at startup. Scores are null until a real phone_stats file is loaded.
