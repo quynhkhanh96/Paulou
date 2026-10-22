@@ -18,6 +18,7 @@ Decision Log D36 replaced the old Branch 1/Branch 2 split: MVP uses a single fre
 - **Real `FreePhoneRecognizer` implementations** (D45): Cnam-LMSSC and bofenghuang.
 - **Merge logic** (was an open design question; resolved by D40) and **feedback** (D41).
 - **`PipelineConfig`, `PaulouPipeline`, span location** (D48); **edge-tts hang fix** (D49); **manual end-to-end CLI** (D50, `docs/pipeline_cli.md`).
+- **Latency benchmark** (`experiments/runners/benchmark_latency.py`, `experiments/results/latency/RESULTS.md`) — resolves D15: synchronous `/attempts` (D52).
 
 ---
 
@@ -29,9 +30,9 @@ Decision Log D36 replaced the old Branch 1/Branch 2 split: MVP uses a single fre
 - Owner/status: not started; next after the findings below are triaged.
 
 **2. Findings from the first real end-to-end runs (D50)** — each needs a diagnosis, some need a design decision. Reproduce with `docs/pipeline_cli.md`.
-- **Liaisons the pipeline does not predict.** On "Les enfants ont acheté des pommes." the TTS (and a human reading) says "enfants‿ont" [z] and "ont‿acheté" [t]; neither is in the canonical sequence, so each is scored as an `insertion`. To diagnose: (a) "enfants‿ont" fell across a chunk boundary (Gemini split "Les enfants" / "ont acheté"), and `analyze_chunk` evaluates each chunk alone, so liaison across chunk boundaries is not modeled at all; (b) "ont‿acheté" is inside one chunk, so check the rule engine (AUX + participle) and the POS tags; (c) D23's greedy left-to-right resolution drops the second boundary of a chain. Design question: should the parser avoid splitting inside a liaison, or should units be allowed to cross chunks?
+- **Liaison inside a chunk that the rule engine does not predict.** "ont‿acheté" [t] is inside one chunk but missing from the canonical sequence, so it is scored as an `insertion`. To diagnose: the rule engine (AUX + participle), the POS tags, and D23's greedy resolution of liaison chains. (Liaison ACROSS chunk boundaries, e.g. "enfants‿ont", is an accepted MVP limitation: D51, see Deferred.)
 - **Optional schwa.** Lexique gives "acheté" as [aʃəte]; natural speech (and TTS) usually drops the schwa, which is scored as a `deletion` of `ə` (score 0). Needs a decision, e.g. treat schwa as an optional phoneme in `align_phonemes` (D38's equal-weight Levenshtein has no notion of optional phones).
-- **Parser non-determinism.** The same sentence gave 3 chunks on one run and 2 on another. Options: cache parse results per sentence, set temperature 0 (check what `gemini_parser.py` sets), or both.
+- **Parser non-determinism.** The same sentence gave 3 chunks on one run and 2 on another. D52 decides to cache parse results by sentence text (to build with the backend); optionally also set temperature 0 (check what `gemini_parser.py` sets).
 - **Clip boundary accuracy** (D49). A 50-80 ms offset fixed the one case tested by ear. Re-test on many sentences/voices once the UI exists; if the needed shift varies per boundary, add energy-based boundary snapping (new pure function, new decision entry).
 - **Canonicalizer bias near nasal vowels** (D47 caveat): insertion scores next to nasal vowels should not be treated as fully trustworthy until a mitigation is designed.
 - **Possible accent/microphone effects**: the first self-recording scored `e -> ɛ` on "acheté" and a deleted `p` in "pommes"; with no audio to inspect it is unknown whether these are the speaker, the microphone, or the model. Collect recordings (`score --record --save-recording`) before drawing conclusions.
@@ -40,11 +41,11 @@ Decision Log D36 replaced the old Branch 1/Branch 2 split: MVP uses a single fre
 
 ## Core pipeline build order
 
-1-5 above are complete (pure functions, G2P/POS, parser/TTS, diagnostic set and recognizer, alignment/scoring, `pipeline.py`). Next:
+1-5 above are complete (pure functions, G2P/POS, parser/TTS, diagnostic set and recognizer, alignment/scoring, `pipeline.py`), and the latency benchmark is done (D52). Next:
 
-6. Triage the findings above, then run the native-corpus calibration.
-7. Latency benchmark of the recognizer path, which decides D15 (async vs synchronous scoring).
-8. Backend API and UI.
+6. Backend API and UI, using placeholder `phone_stats` (D24: the table is a parameter, swapped without code changes). The UI must not show numeric scores until real stats exist; show the alignment ops and feedback. Backend requirements from D52: synchronous `/attempts`; build `free_decoder` and run one warm-up decode at startup; cache parse results by sentence text; loading state for sentence preparation (~3.5-16 s measured).
+7. In parallel: native-corpus calibration (MVP-blocking item 1), run on a local machine.
+8. Before user testing: the schwa decision and the in-chunk liaison diagnosis (findings above).
 
 *(This ordering itself is a decision — see Decision Log if it changes.)*
 
@@ -52,7 +53,8 @@ Decision Log D36 replaced the old Branch 1/Branch 2 split: MVP uses a single fre
 
 ## Open design questions (not yet resolved, need a decision before/during implementation)
 
-- **Async vs. synchronous scoring API** (Decision Log D15, tentative). Depends on recognizer latency, which has not been benchmarked (the CLI makes it possible: time `score`).
+- **Sentence preparation latency** (D52). `analyze_sentence` took 2.6-13.4 s median (p90 up to 14.8 s), growing with sentence length. Not yet measured: how much is the Gemini call vs `analyze_chunk`. Options if the loading wait is unacceptable in user testing: a faster parser configuration/model, or moving sentence preparation to a background job (`/sentences` returns an id, client polls).
+- **Concurrent load.** Decode is CPU-bound; concurrent attempts will queue. Not measured (D52); measure before any public deployment.
 - **UX flow beyond the two mocked screens.** Onboarding, how a user submits a sentence, what a post-practice review/summary looks like — only isolated chunk/unit-level practice screens have been sketched so far.
 - **`PronunciationUnit.syllables` and `.note` have no owning stage** (also `Chunk.ipa_full`/`stress_syllable`, dropped from the model in D48 for the same reason).
 - **Color-coded pronunciation visualization for Practice UI** (surfaced during AlignmentOp design, Decision Log D37) — green for match, red for substitution, yellow for insertion, gray for deletion. Needs TWO complementary views: (1) a CANONICAL text/IPA view (works for match/substitution/deletion; an insertion can only show as a marker between two phonemes) and (2) a DECODED AUDIO TIMELINE view using `start_ms`/`end_ms` (works for match/substitution/insertion; a deletion has no audio span). Depends on the Practice UI being built.
@@ -62,6 +64,8 @@ Decision Log D36 replaced the old Branch 1/Branch 2 split: MVP uses a single fre
 ---
 
 ## Deferred to post-MVP (explicitly, not forgotten)
+
+- **Liaison across chunk boundaries** (D51). Not modeled; a learner who correctly links e.g. "enfants‿ont" across the parser's chunk boundary gets a false "Extra sound heard". First thing to try after MVP: prompt the parser not to split inside a liaison (D2 says liaison happens within a rhythmic group); only then consider units that cross chunks.
 
 - **Free-input edge case handling** — proper nouns, technical/borrowed vocabulary not covered by Lexique400 or the liaison rule engine. Accepted limitation for MVP (Decision Log D1, D4).
 - **Progress tracking / attempt history** — never designed. Needs its own data model extension beyond `Attempt`.
