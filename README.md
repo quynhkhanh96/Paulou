@@ -4,6 +4,8 @@
 
 A French pronunciation practice app: users input any sentence they want to practice — not just pre-scripted content — and the app breaks it down into rhythmic chunks, then into word- and phoneme-level units, with liaison-aware guidance and speech assessment feedback at each level.
 
+**Status: working local prototype.** You can type a sentence, listen to a reference voice (normal or slow), record yourself, and see sound by sound what was said correctly, replaced, added or missing. Scores are not meaningful yet: the calibration statistics from a native corpus do not exist, so the app shows no numeric score (see [Current status](#current-status)).
+
 ---
 
 ## Why Paulou
@@ -16,6 +18,27 @@ Two design bets follow from that:
 - **Custom speech assessment instead of an off-the-shelf API.** Commercial pronunciation-scoring APIs (Azure Pronunciation Assessment was evaluated first) don't expose a way to control the phoneme sequence being scored against, and their French support lacks phoneme-level detail (no `NBestPhonemes`, no syllable breakdown for `fr-FR`). Liaison specifically is a known weak point even by Microsoft's own admission. Paulou instead builds a custom phoneme-level scoring pipeline — a single free-decode + 3-way alignment pass (Decision Log D36) — with full control over the reference phoneme sequence, so liaison can be scored deliberately rather than hoped for.
 
 See [Key design decisions](#key-design-decisions) for the reasoning behind each major choice, with links to the experiments backing them.
+
+---
+
+## Quick start
+
+Needs Docker Desktop, the Lexique400 file and a Gemini API key. Full instructions (and the two-process development setup) are in [docs/web_app.md](docs/web_app.md).
+
+```bash
+# from the package directory (the one containing docker-compose.yml)
+# 1. put Lexique400.tsv in data/        (git-ignored, downloaded separately — see SETUP.md)
+# 2. put GEMINI_API_KEY=... in the .env one level above the package (the repo root; copy .env.example)
+docker compose up --build
+```
+
+Then open **http://localhost:8080** (use `localhost`: browsers only allow the microphone on `localhost` or https). The first start downloads the speech model; loading it takes about 12 seconds after the container is up, and the page says so and unlocks recording when it is ready.
+
+How a session goes:
+
+1. Type or paste a French sentence. Preparing it (splitting into rhythm groups and recording a reference voice) takes roughly 3.5–16 seconds, longer for longer sentences.
+2. Pick a chunk and listen to it, at normal speed or slowly. Pick one unit (a word, a liaison pair, an elided clitic) to drill it alone.
+3. Record. The result is the expected sounds in order, each marked *said correctly*, *said as another sound*, *extra sound* or *missing*, plus a written comment. Scoring takes well under a second per chunk.
 
 ---
 
@@ -35,29 +58,29 @@ User input (sentence)
         │
         ▼
 [4] Practice UI            — chunk-level and unit-level drilling
-        │
+        │                     (React frontend → FastAPI backend → PaulouPipeline)
         ▼
 [5] Speech Assessment      — single free-decode + 3-way alignment pipeline
-                              (Decision Log D36); implemented end to end;
-                              real recognizers in free_decode/ (D45),
-                              bias check run (D47)
+                              (Decision Log D36)
 ```
 
 | Stage | Folder | What it does |
 |---|---|---|
-| Sentence parsing | [`stages/parsing/`](stages/parsing/) | LLM-based chunking into rhythmic groups (Gemini API, Decision Log D27) |
-| G2P | [`stages/chunk_analyzer/g2p/`](stages/chunk_analyzer/g2p/) | Word → phonemes (Lexique400 + eSpeak-ng fallback, Decision Log D30) |
+| Sentence parsing | [`stages/parsing/`](stages/parsing/) | LLM-based chunking into rhythmic groups (Gemini API, D27), with an on-disk cache by sentence text so chunking is stable and repeat sentences skip the LLM call (`caching.py`, D55) |
+| G2P | [`stages/chunk_analyzer/g2p/`](stages/chunk_analyzer/g2p/) | Word → phonemes (Lexique400 + eSpeak-ng fallback, D30) |
 | POS tagging | [`stages/chunk_analyzer/pos/`](stages/chunk_analyzer/pos/) | Needed to apply liaison rules correctly |
 | Liaison rules | [`stages/chunk_analyzer/liaison/`](stages/chunk_analyzer/liaison/) | Obligatoire / interdite / facultative rule engine |
-| Elision detection | [`stages/chunk_analyzer/elision/`](stages/chunk_analyzer/elision/) | Closed-list lookup for elided clitics (l', d', j', ...) — distinct from liaison, Decision Log D28 |
+| Elision detection | [`stages/chunk_analyzer/elision/`](stages/chunk_analyzer/elision/) | Closed-list lookup for elided clitics (l', d', j', ...) — distinct from liaison, D28 |
 | Unit assembly | [`stages/chunk_analyzer/assembly/`](stages/chunk_analyzer/assembly/) | Groups words into `single`, `liaison_group`, or `elision_group` `PronunciationUnit`s |
-| TTS | [`stages/tts/`](stages/tts/) | Sentence-level synthesis with word-boundary timestamps — two swappable providers (Azure Neural, edge-tts, Decision Log D31), plus caching (D7), span location (`timing_alignment.py`, D48) and chunk/unit audio slicing (D5) |
-| Speech Assessment | [`stages/speech_assessment/`](stages/speech_assessment/) | Single free-decode + 3-way alignment pipeline (Decision Log D36), replacing the earlier two-branch GOP/free-decode split. Pure functions implemented and tested: `align.py` (3-way Levenshtein, D38), `scoring.py` (per-op-type accuracy score, D39), `merge.py` (MEAN aggregation, D40), `feedback.py` (structural-error + bracket phrasing, D41), `calibration.py` (kept, renamed from GOP-specific naming, D39). Chunk-level orchestration also implemented: `speech_assessment.py::score_chunk` (D42), tested via a stub `FreePhoneRecognizer`. Real recognizers: `free_decode/` (`wav2vec2_cnam` default, D45/D47). Canonicalizer-bias check run (D47). |
-| Pipeline | [`pipeline.py`](pipeline.py) | `PaulouPipeline`: `analyze_sentence`, `synthesize_reference`, `score_attempt` (D48); `core/config.py::PipelineConfig` selects implementations |
+| TTS | [`stages/tts/`](stages/tts/) | Sentence-level synthesis with word-boundary timestamps — two swappable providers (Azure Neural, edge-tts, D31; edge-tts is the default), caching (D7), span location (`timing_alignment.py`, D48) and chunk/unit audio slicing (D5) |
+| Speech Assessment | [`stages/speech_assessment/`](stages/speech_assessment/) | One free-phone-recognition pass per recording, 3-way Levenshtein alignment against the canonical phonemes (`align.py`, D38), per-op scoring (`scoring.py`, D39), per-unit merge (`merge.py`, D40), feedback text (`feedback.py`, D41), chunk orchestration (`speech_assessment.py::score_chunk`, D42). Real recognizers in `free_decode/` (`wav2vec2_cnam` is the default, D45/D47) |
+| Pipeline | [`pipeline.py`](pipeline.py) | `PaulouPipeline`: `analyze_sentence`, `synthesize_reference`, `score_attempt`, `slice_reference` (D48); `core/config.py::PipelineConfig` selects implementations |
+| Backend | [`backend/api/`](backend/api/) | FastAPI app that only calls `PaulouPipeline` (D13): `/api/health`, `/api/sentences`, `/api/sentences/{id}/audio`, `/api/attempts` (D54). Scoring is synchronous (D52); the speech model is loaded and warmed at startup |
+| Frontend | [`frontend/`](frontend/) | Vite + React + TypeScript practice UI (D58). Shows the expected sounds in order, colour- and symbol-coded by outcome |
 
-Every model-backed or externally-dependent stage (parser, G2P source, TTS provider, free-phone recognizer) is defined as a `Protocol` interface and resolved through a small registry, so alternative implementations can be swapped via config without touching the pipeline or other stages — this is what lets `stages/tts/azure_tts.py` and `edge_tts_provider.py` coexist today (Decision Log D31). The GOP-scorer swappability example (`kaldi_gop.py`/`gopft_gop.py`) no longer applies — see Decision Log D36; the swappable interface for Speech Assessment going forward is `FreePhoneRecognizer` alone — its signature was simplified per Decision Log D37 to `decode(audio) -> tuple[list[str], list[float], list[tuple[int, int]]]` (phones, per-position confidence, per-position time boundaries), dropping the originally-specced full posterior vector once nothing downstream needed more than one float per position. Pure, deterministic logic (liaison rules, unit assembly, alignment, merging, calibration, feedback templates) is kept as plain functions — no abstraction layer, since there's no real expectation of swapping these.
+Every model-backed or externally-dependent stage (parser, G2P source, TTS provider, free-phone recognizer) is defined as a `Protocol` interface and resolved through a small registry, so alternative implementations can be swapped via config without touching the pipeline or other stages — this is what lets `stages/tts/azure_tts.py` and `edge_tts_provider.py` coexist (D31). The swappable interface for Speech Assessment is `FreePhoneRecognizer`: `decode(audio) -> tuple[list[str], list[float], list[tuple[int, int]]]` (phones, per-position confidence, per-position time boundaries; D37). Pure, deterministic logic (liaison rules, unit assembly, alignment, merging, calibration, feedback templates) is kept as plain functions — no abstraction layer, since there is no real expectation of swapping these.
 
-The core pipeline (`core/`, `stages/`, `pipeline.py`) is plain Python with no dependency on any UI layer. It's callable directly from a notebook or test, and a thin `backend/api/` (FastAPI) wraps it for the eventual frontend — the pipeline itself has no knowledge that a backend or frontend exists.
+The core pipeline (`core/`, `stages/`, `pipeline.py`) is plain Python with no dependency on any UI layer. It is callable directly from a notebook, the command line ([docs/pipeline_cli.md](docs/pipeline_cli.md)) or a test; the backend wraps it in a thin API, and the pipeline itself has no knowledge that a backend or frontend exists. API schemas are separate from the core data models (D14).
 
 ---
 
@@ -66,51 +89,59 @@ The core pipeline (`core/`, `stages/`, `pipeline.py`) is plain Python with no de
 | Decision | Why | Backing |
 |---|---|---|
 | Custom phoneme-level pipeline instead of Azure Pronunciation Assessment | Azure gives no control over the reference phoneme sequence and lacks phoneme-level detail for `fr-FR`; liaison handling is unverifiable | — |
-| ~~Two parallel branches (GOP forced-align + free phone recognition)~~ — **superseded, Decision Log D36** | Reversed in favor of a single free-decode + 3-way Levenshtein alignment pipeline (substitution + insertion + deletion in one pass) — faster to build and control for MVP, and matches the pattern used by other current open-source pronunciation tools (OpenPronounce, Echoic) | — |
+| Single free-decode + 3-way Levenshtein alignment (replacing an earlier GOP + free-decode two-branch design) | Substitution, insertion and deletion in one pass; faster to build and control, and it matches the pattern used by other open-source pronunciation tools (OpenPronounce, Echoic). The earlier two-branch design (GOP forced-align + free phone recognition) is superseded | D36 |
+| Free-decode model chosen with a canonicalizer-bias check on a synthetic diagnostic set | An ASR-style recognizer may "correct" a dropped liaison back to the canonical form and hide the very error being taught. A residual bias near nasal vowels is documented | D10, D43–D47, [results](experiments/results/canonicalizer_bias/) |
 | Liaison modeled as its own `PronunciationUnit` type, not a word-level footnote | Liaison is a resyllabification phenomenon — scoring and drilling it as two separate words loses the thing being taught | — |
-| Unsupervised percentile/z-score calibration, not a supervised regressor | No labeled French pronunciation dataset exists (unlike English's speechocean762); building one is deferred until there's real usage data to justify it | — |
-| Sentence-level TTS synthesis (not per-chunk or per-unit) | Preserves natural prosody and in-context liaison; chunks/units are sliced from one audio pass via timestamps, not synthesized separately | — |
-| Rule-based liaison detection (not a learned model) | Sufficient because MVP content is either app-authored or short user sentences; a purely rule-based approach is known to break down on unconstrained free-form input (this is a known, accepted limitation — see below) | — |
+| Unsupervised percentile/z-score calibration, not a supervised regressor | No labeled French pronunciation dataset exists (unlike English's speechocean762); building one is deferred until there is real usage data to justify it | D11 |
+| Sentence-level TTS synthesis (not per-chunk or per-unit) | Preserves natural prosody and in-context liaison; chunks and units are sliced from one audio pass via timestamps, not synthesized separately | D5 |
+| Rule-based liaison detection (not a learned model) | Sufficient for short user sentences; known to break down on unconstrained input (accepted, see below) | D4 |
+| Scoring runs synchronously inside the request | Measured on one development machine (Windows, 16 logical CPUs, CPU only): 0.075–0.114 s median per chunk and at most 0.63 s (p90) for a 7 s sentence, far below the 1–2 s threshold. Sentence preparation is the slow step (up to about 16 s), so the UI shows a loading state | D52, [latency results](experiments/results/latency/RESULTS.md) |
+| Local single-user web app, no auth, no database | Progress tracking is deferred; prepared sentences live in memory and the parse and TTS caches live on disk | D53 |
+| Browser recordings are uploaded in their native format and converted to WAV with ffmpeg | `MediaRecorder` produces webm/opus in Chromium, which the recognizer's audio reader cannot open; checked on a real recording | D56 |
+| No numeric scores until real calibration statistics exist | With placeholder statistics the numbers would look meaningful and not be; the UI shows the alignment ops and written feedback, and says that the overall wording is provisional | D57 |
 
 ---
 
 ## Current status
 
-**The whole pipeline is implemented and has been run end to end with real components (Gemini, Lexique400 + eSpeak, edge-tts, wav2vec2) on a command line — see [docs/pipeline_cli.md](docs/pipeline_cli.md).** What is missing for a trustworthy MVP: native-corpus calibration statistics, a few findings from the first real runs (Roadmap), and the UI.
+**Paulou runs end to end with real components** — Gemini, Lexique400 + eSpeak-ng, edge-tts, wav2vec2 — from the command line ([docs/pipeline_cli.md](docs/pipeline_cli.md)) and through the web app ([docs/web_app.md](docs/web_app.md)). The backend and frontend are tested with a stub pipeline plus a browser smoke test; the speech model itself is exercised only by the CLI, the diagnostic set and manual runs.
 
-**Implemented so far:**
-- **Pure functions** (step 1): liaison rule engine (`stages/chunk_analyzer/liaison/rule_engine.py`), elision detection (`stages/chunk_analyzer/elision/elision.py`, Decision Log D28), unit assembly (`stages/chunk_analyzer/assembly/unit_assembler.py`), calibration (`stages/speech_assessment/calibration.py`), feedback templating (`stages/speech_assessment/feedback.py` — redesigned in D32 to apply uniformly to every unit type, not just `single` as D19 originally scoped it).
-- **G2P + POS tagging** (step 2): `stages/chunk_analyzer/g2p/lexique_espeak.py` (Lexique400 lookup, Decision Log D30, + eSpeak-ng fallback) and `stages/chunk_analyzer/pos/spacy_tagger.py` (spaCy `fr_core_news_sm`).
-- **Sentence parser + TTS** (step 3): `stages/parsing/gemini_parser.py` (Gemini API, Decision Log D27); TTS has TWO swappable providers — `stages/tts/azure_tts.py` (official Azure SDK) and `stages/tts/edge_tts_provider.py` (unofficial, no API key needed, Decision Log D31) — plus `stages/tts/caching.py` (hash-based cache, D7) and `stages/tts/audio_slicing.py` (chunk/unit clip extraction with silence padding + fade, D5).
-> **Superseded by Decision Log D36** — the item below describes work built
-> against the abandoned two-branch (GOP + free-decode) design. It is kept
-> here as an accurate historical record of what was built and tested, not
-> as current architecture. None of it is confirmed to carry forward
-> unchanged into the single-pipeline redesign.
-- **Speech Assessment orchestration/plumbing** (step 4, "Stage A" — real GOP model is "Stage B", not started): `stages/speech_assessment/calibration.py` and `feedback.py` (feedback redesigned in Decision Log D32 — groups phones by score bracket instead of naming only the weakest, and now applies uniformly to every unit type, not just `single`), `phoneme_grouping.py` (5a-2, D20), `merge.py` (5e, MEAN aggregation, D33), and `speech_assessment.py` (orchestrates GOP → calibration → grouping → merge into a `UnitResult` per unit, D34/D35). `PronunciationUnit` gained a `phonemes: list[str]` field to support this (not in the Architecture Spec's original schema). Optional-silence (`SIL`) handling between units is implemented but its correctness depends on a real GOPScorer's alignment behavior — unverified (D35). Tested throughout with a simulated stub GOPScorer, not a real acoustic model.
-- **Speech Assessment, redesigned pipeline** (Decision Log D36–D42) — the item above describes work built against the abandoned two-branch design, kept as an accurate historical record, not current architecture. The actual current pipeline: `core/models.py` gained `AlignmentOp` and `ScoredAlignmentOp`, replacing `RawPhoneScore`/`PhoneScore` (dormant, not deleted — D37); `stages/speech_assessment/align.py::align_phonemes` (3-way Levenshtein — substitution/insertion/deletion in one pass, D38); `scoring.py::score_alignment_op` (per-op-type accuracy scoring, D39); `calibration.py` kept and reused, `raw_gop` renamed to `raw_value` since GOP no longer exists (D39); `merge.py::merge_to_unit_result` and `merge_chunk_results` (MEAN aggregation carried over from the old design, plus grouping a chunk's ops by unit, D40); `feedback.py::generate_feedback` (structural-error sentences plus D32's bracket phrasing for matches, D41); and `speech_assessment.py::score_chunk` (chunk-level orchestration wiring a `FreePhoneRecognizer` through the above, tested via a stub — no real model needed, D42). `core/interfaces.py::FreePhoneRecognizer` is the real (simplified, D37) Protocol; `GOPScorer` is now explicitly dormant there.
-- **Free-phone recognizers** (Decision Log D45): `stages/speech_assessment/free_decode/` — `wav2vec2_cnam` (default) and `wav2vec2_bofenghuang`, sharing `_wav2vec2_ctc_common.py`. **Diagnostic set and canonicalizer-bias check** (Decision Log D43–D47): `experiments/diagnostic_set/`, `experiments/runners/canonicalizer_bias_check.py` and `compare_free_decoder.py`, results under `experiments/results/`.
-- **Pipeline orchestration** (Decision Log D48): `pipeline.py::PaulouPipeline`, `core/config.py::PipelineConfig`, and span location (`stages/tts/timing_alignment.py::locate_spans`). edge-tts hang fix and timing offset (D49); manual end-to-end CLI (`experiments/runners/pipeline_cli.py`, D50).
-- Core data models added incrementally as each stage needs them (`core/models.py`): `LiaisonDecision`, `PronunciationUnit`, `AlignmentOp`, `ScoredAlignmentOp`, `UnitResult`, `WordTiming`, `Chunk`, `Sentence`, `ReferenceAudio` (`RawPhoneScore`/`PhoneScore` kept dormant, not deleted). `Attempt` not needed yet.
-- <!-- TODO: fill in counts from a fresh run of the unit/model/contract suites -->Tests: fast unit suite (now also covering `test_registry`, `test_timing_alignment`, `test_pipeline`, `test_pipeline_cli`, `test_edge_tts_provider`), model tests requiring the real spaCy model, and contract tests requiring real Gemini/Azure credentials — see `tests/README.md`. (The edge-tts contract test file needs no credential but is run separately — see that file's own notes.)
+**Implemented so far** (decision numbers refer to the Decision Log; open items are in the [Roadmap](docs/roadmap.md)):
+- **Pure functions**: liaison rule engine (`stages/chunk_analyzer/liaison/rule_engine.py`), elision detection (`.../elision/elision.py`, D28), unit assembly (`.../assembly/unit_assembler.py`), calibration (`stages/speech_assessment/calibration.py`), feedback templating (`feedback.py`, applied uniformly to every unit type since D32).
+- **G2P + POS tagging**: `stages/chunk_analyzer/g2p/lexique_espeak.py` (Lexique400, D30, + eSpeak-ng fallback) and `.../pos/spacy_tagger.py` (spaCy `fr_core_news_sm`).
+- **Sentence parser + TTS**: `stages/parsing/gemini_parser.py` (D27); two TTS providers — `azure_tts.py` and `edge_tts_provider.py` (D31) — plus `caching.py` (D7) and `audio_slicing.py` (D5).
+- **Speech assessment, single-pipeline design** (D36–D42): `AlignmentOp` / `ScoredAlignmentOp` in `core/models.py` (replacing the dormant `RawPhoneScore` / `PhoneScore`, D37); `align.py` (3-way Levenshtein, D38), `scoring.py` (D39), `merge.py` (D40), `feedback.py` (D41), `speech_assessment.py::score_chunk` (D42). The earlier two-branch GOP + free-decode work (D33–D35) was superseded by D36 and is kept only as history.
+- **Free-phone recognizers** (D45): `free_decode/` — `wav2vec2_cnam` (default) and `wav2vec2_bofenghuang`. **Diagnostic set and canonicalizer-bias check** (D43–D47): `experiments/diagnostic_set/`, `experiments/runners/`, `experiments/results/`.
+- **Pipeline orchestration** (D48): `pipeline.py::PaulouPipeline`, `core/config.py::PipelineConfig`, `stages/tts/timing_alignment.py::locate_spans`. edge-tts hang fix and timing offset (D49); command-line runner (`experiments/runners/pipeline_cli.py`, D50); latency benchmark (D52).
+- **Parse cache** (D55): `stages/parsing/caching.py::CachingSentenceParser`, enabled in `PaulouPipeline` through `parser_cache_dir`.
+- **Web app** (D53–D58): `backend/api/` (FastAPI; settings, schemas, mappers, audio conversion, in-memory sentence store, health/sentences/attempts routers), `frontend/` (Vite + React + TypeScript), `docker-compose.yml`, `Dockerfile.backend`.
+- **Tests**: fast unit suite (`tests/unit`), backend API suite with a stub pipeline (`tests/api`, includes a real browser-recorded webm fixture), frontend suite (Vitest + Testing Library) and a Chromium smoke test (`frontend/e2e/smoke.mjs`), model tests that need the real spaCy model, and contract tests that need real Gemini/Azure credentials — see `tests/README.md`. The edge-tts contract test needs no credential but is run separately.
+<!-- TODO: fill in test counts from a fresh run of every suite -->
 
-**Known data/tooling gaps, not yet resolved:**
-- `pipeline.py` wires Lexique400 (Decision Log D30) through `stage_kwargs` (D48); the plain `LexiqueEspeakG2P` constructor still loads the small hand-written fixture. The 33MB file itself isn't committed to the repo (git-ignored), so it must be downloaded separately — see SETUP.md.
-- The native-French-corpus calibration statistics (Decision Log D11) haven't been produced yet — `calibrate_score` takes the stats table as a parameter rather than embedding real numbers. Originally scoped for GOP values, now feeds `match`-op confidence calibration instead (Decision Log D39); the math is unchanged. Until then, the CLI uses placeholder statistics and says so (D50).
+**Not done, and what it means for users:**
+- **No calibration statistics yet** (D11, D24). `calibrate_score` takes a table of per-phone statistics from a native French corpus, which has not been produced. Until then the CLI and the backend use placeholder statistics, and the API returns no numeric score (D57). The structure of the result (which sounds matched, were replaced, added or missing) is meaningful; the overall wording ("good effort", "needs work") is not. Supply a real table with `PAULOU_PHONE_STATS_PATH` and the same fields fill in without code changes.
+- **Findings from the first real runs** are still open (see the [Roadmap](docs/roadmap.md)): liaisons inside a chunk that the rule engine does not predict, and optional schwa counted as missing.
+- **No progress tracking, accounts or deployment.** One user, one process.
+- **No audio-timeline view** of the recording; only the canonical view (D37, D58).
+- The Docker setup has been built and run by the author on one machine; recordings were verified only in Chromium (with a fake microphone) — Safari and Firefox are untested.
 
-**Next up:** triage the findings from the first real runs (Roadmap), run the native-corpus calibration, then latency benchmarking and the UI. The canonicalizer-bias diagnostic (D10) is done: see D47 for the result and its caveat.
+**Known data/tooling gaps:**
+- `pipeline.py` wires Lexique400 (D30) through `stage_kwargs` (D48); the plain `LexiqueEspeakG2P` constructor still loads the small hand-written fixture. The 33 MB file is not committed (git-ignored); download it separately — see SETUP.md.
+
+**Next up:** the native-corpus calibration run (MVP-blocking), the schwa decision and the in-chunk liaison diagnosis before user testing, collecting real learner recordings. The canonicalizer-bias diagnostic (D10) is done: see D47 for the result and its caveat.
 
 **Known limitations (by design, not oversight):**
-- Liaison detection is rule-based (`stages/chunk_analyzer/liaison/rule_engine.py`), which is expected to be incomplete on unconstrained free-form input containing rare vocabulary, proper nouns, or borrowed words. This is an accepted MVP tradeoff (Decision Log D4), deferred post-MVP.
-- **Confirmed, not just theoretical:** the POS tagger (spaCy `fr_core_news_sm`) mistags "content" (adjective, "happy") as `ADV` even in a full, grammatically correct sentence, which causes the liaison rule engine's "très/trop + ADJ" obligatoire pattern to miss real liaison for this specific word. Locked in as a known limitation for now — see the decision log's POS tagging entry.
-- Liaison across chunk boundaries is not modeled, and some obligatoire liaisons (e.g. "ont acheté") were not predicted in the first real run; optional schwa is scored as a deletion. See Roadmap.
-- French support in the underlying acoustic models and tooling generally lags English; the default `FreePhoneRecognizer` (`Cnam-LMSSC/wav2vec2-french-phonemizer`) is community-maintained rather than officially supported at the scale of its English equivalents.
+- Liaison detection is rule-based (`stages/chunk_analyzer/liaison/rule_engine.py`) and is expected to be incomplete on free-form input with rare vocabulary, proper nouns or borrowed words (D4).
+- The POS tagger (spaCy `fr_core_news_sm`) mistags "content" (adjective, "happy") as `ADV`, so the "très/trop + ADJ" liaison pattern misses it.
+- A liaison that crosses a chunk boundary (e.g. "enfants‿ont") is not modeled: a learner who links it correctly is shown a false "extra sound" (D51). The UI says so when an extra sound appears.
+- Optional schwa is counted as missing, and the recognizer can hear an extra consonant after a nasal vowel (D47). The UI explains both next to the result.
+- Sentences containing digits or symbols are rejected, because the voice reads them differently from how they are written; write them out as words.
+- The reference voice comes from edge-tts, an unofficial service that can change or stop working without notice (D31). Clip boundaries use a fixed 50 ms timing offset that was checked by ear on one sentence (D49).
+- French support in the underlying acoustic models generally lags English; the default recognizer (`Cnam-LMSSC/wav2vec2-french-phonemizer`) is community-maintained.
 
 ---
 
-## Getting started
-
-*Steps below reflect what's actually built and tested right now — see [Current status](#current-status) and the [Roadmap](docs/roadmap.md).*
+## Getting started (development)
 
 ```bash
 # clone and install
@@ -118,13 +149,17 @@ git clone https://github.com/quynhkhanh96/paulou.git
 cd paulou                                    # repo root (docs/, this README, SETUP.md, the paulou/ package)
 pip install -r requirements-dev.txt
 python -m spacy download fr_core_news_sm     # separate step — see SETUP.md if this fails
-cp .env.example .env                         # then fill in GEMINI_API_KEY / Azure Speech key — see SETUP.md
+cp .env.example .env                         # then fill in GEMINI_API_KEY (Azure Speech key is optional) — see SETUP.md
 
-# move into the package to run tests (no packaging / pip install -e . set up yet)
+# everything else runs from the package directory (no packaging / pip install -e . yet)
 cd paulou
 
-# fast suite — pure functions + G2P dict lookup, no models needed
-pytest tests/unit -v
+# backend tests — no network, no models
+pip install -r backend/requirements-dev.txt
+pytest tests/unit tests/api -v
+
+# frontend tests
+cd frontend && npm install && npm test && cd ..
 
 # model-backed suite — loads the real spaCy model, slower
 pytest tests/model -v -m model
@@ -132,20 +167,26 @@ pytest tests/model -v -m model
 # contract suite — calls the real Gemini + Azure APIs, needs credentials
 pytest tests/contract -v --ignore=tests/contract/test_edge_tts_provider_contract.py
 
-# edge-tts contract — no credential needed, but run separately (see tests/README.md — can hang on restrictive networks)
+# edge-tts contract — no credential needed, run separately (see tests/README.md — can hang on restrictive networks)
 pytest tests/contract/test_edge_tts_provider_contract.py -v
-
-# whole pipeline with real components: see docs/pipeline_cli.md
 ```
 
-Comparing free-phone-recognizer candidates on the diagnostic set:
+Run the web app without Docker (two terminals, from the package directory; details in [docs/web_app.md](docs/web_app.md)):
+
+```bash
+uvicorn backend.api.main:create_default_app --factory --port 8000
+cd frontend && npm run dev                   # http://localhost:5173
+```
+
+Run the whole pipeline from the command line (analyze, reference audio, self-test, score a recording): [docs/pipeline_cli.md](docs/pipeline_cli.md).
+
+Compare free-phone-recognizer candidates on the diagnostic set:
 
 ```bash
 python -m experiments.runners.compare_free_decoder --recognizers wav2vec2_cnam wav2vec2_bofenghuang
 ```
 
-Qualitative review notebooks (chunking quality, audio playback, alignment
-visualization) are planned under `experiments/notebooks/` — not yet built.
+Qualitative review notebooks (chunking quality, audio playback, alignment visualization) are planned under `experiments/notebooks/` — not yet built.
 
 ---
 
@@ -155,48 +196,46 @@ visualization) are planned under `experiments/notebooks/` — not yet built.
 Paulou/                                # repo root
 ├── docs/
 │   ├── assets/
-│   └── pipeline_cli.md                # running the whole pipeline end to end (D50)
+│   ├── pipeline_cli.md                # running the whole pipeline from the command line (D50)
+│   ├── web_app.md                     # running and configuring the web app, API reference (D53–D58)
+│   └── roadmap.md
 ├── README.md                          # this file
 ├── SETUP.md                           # local dev setup (venv, dependencies, running tests)
 ├── requirements-dev.txt
 ├── .env.example                       # GEMINI_API_KEY, AZURE_SPEECH_KEY/REGION — copy to .env at this same level
 ├── .gitignore
-└── paulou/                            # the actual Python package
-    ├── core/                          # data models, interfaces (Protocol), registry — built incrementally as stages need them
-    │   └── config.py                  # PipelineConfig — selects the implementation per stage (D48)
+└── paulou/                            # the Python package; run everything from here
+    ├── core/                          # data models, interfaces (Protocol), registry, PipelineConfig (D48)
     ├── stages/                        # one subfolder per pipeline stage, swappable implementations
-    │   ├── parsing/                   # implemented — Gemini API sentence parser (Decision Log D27)
-    │   ├── chunk_analyzer/            # stage 2's sub-modules, nested here (Decision Log D29)
-    │   │   ├── liaison/               # implemented — rule engine
-    │   │   ├── elision/               # implemented — closed-list clitic detection (Decision Log D28)
-    │   │   ├── assembly/              # implemented — unit assembly
-    │   │   ├── g2p/                   # implemented — Lexique400 lookup (D30) + eSpeak-ng fallback; test fixture used by default, real DB via from_lexique400() (not committed, .gitignore)
-    │   │   └── pos/                   # implemented — spaCy fr_core_news_sm
-    │   ├── speech_assessment/         # pure functions implemented (D36-D41): align.py, scoring.py,
-    │   │                              #   merge.py, feedback.py, calibration.py; orchestration
-    │   │                              #   implemented (D42): speech_assessment.py::score_chunk;
-    │   │                              #   free_decode/ implemented (D45)
-    │   └── tts/                       # implemented — Azure Neural + edge-tts providers, caching, audio slicing,
-    │                                  #   timing_alignment.py (D5/D7/D31/D48)
+    │   ├── parsing/                   # Gemini sentence parser (D27) + parse cache (D55)
+    │   ├── chunk_analyzer/            # stage 2 sub-modules (D29): liaison/, elision/, assembly/, g2p/, pos/
+    │   ├── tts/                       # Azure Neural + edge-tts, caching, slicing, timing_alignment.py
+    │   └── speech_assessment/         # align, scoring, merge, feedback, calibration, score_chunk,
+    │       └── free_decode/           #   and the wav2vec2 recognizers (D45)
     ├── pipeline.py                    # PaulouPipeline (D48)
-    ├── backend/                       # not yet built — FastAPI app, DB models/repository, background jobs
-    ├── frontend/                      # not yet built — client app (TBD)
+    ├── backend/                       # FastAPI app (D54)
+    │   ├── api/                       # main, routers/, schemas, mappers, settings, audio conversion, store
+    │   └── requirements*.txt
+    ├── frontend/                      # Vite + React + TypeScript (D58): src/, e2e/ (browser smoke test)
+    ├── docker-compose.yml             # backend + frontend (D53)
+    ├── Dockerfile.backend
+    ├── data/                          # [git-ignored] Lexique400.tsv, cache/ (TTS and parse caches)
     ├── tests/
-    │   ├── unit/                      # implemented — fast, pure functions + G2P dict lookup
-    │   ├── model/                     # implemented — slow, loads the real spaCy model
-    │   ├── contract/                  # implemented — calls the real Gemini API, needs GEMINI_API_KEY
-    │   ├── fixtures/                  # implemented — g2p_golden.tsv (fixture lexicon)
-    │   ├── api/                       # not yet built (no backend yet)
-    │   └── db/                        # not yet built (no backend yet)
-    └── experiments/                   # diagnostic_set/, runners/ (incl. pipeline_cli.py), results/ implemented;
-                                       #   notebooks/ not yet
+    │   ├── unit/                      # fast, no network, no models
+    │   ├── api/                       # backend API tests with a stub pipeline
+    │   ├── model/                     # slow, loads the real spaCy model
+    │   ├── contract/                  # calls real Gemini / Azure / edge-tts
+    │   └── fixtures/                  # g2p_golden.tsv, diagnostic_audio/, browser_recording.webm
+    └── experiments/                   # diagnostic_set/, runners/ (pipeline_cli, benchmark_latency,
+                                       #   compare_free_decoder, canonicalizer_bias_check), results/;
+                                       #   notebooks/ not yet built
 ```
 
 ---
 
 ## Contributing
 
-This is primarily a personal research and learning project, built alongside a PhD. Issues and PRs are welcome, but response times may be slow, especially through end of 2026.
+This is primarily a personal research and learning project, built alongside a PhD. Issues and PRs are welcome, but response times may be slow, especially through end of 2026. The TTS and speech-assessment components are where a collaborator would help most; start with [docs/pipeline_cli.md](docs/pipeline_cli.md), which shows the whole pipeline running.
 
 ---
 
@@ -208,11 +247,11 @@ This is primarily a personal research and learning project, built alongside a Ph
 
 ## Acknowledgments & references
 
-- [Lexique400](http://www.lexique.org/) — open French phonetic/lexical database (Decision Log D30 — supersedes the originally-planned Lexique383)
+- [Lexique400](http://www.lexique.org/) — open French phonetic/lexical database (D30; supersedes the originally planned Lexique383)
 - [eSpeak NG](https://github.com/espeak-ng/espeak-ng) — fallback grapheme-to-phoneme synthesis
-- [Azure Neural TTS](https://azure.microsoft.com/en-us/products/ai-services/text-to-speech) — official TTS provider (Decision Log D5/D6/D7)
-- [edge-tts](https://github.com/rany2/edge-tts) — unofficial, no-API-key TTS provider added alongside Azure (Decision Log D31)
+- [Azure Neural TTS](https://azure.microsoft.com/en-us/products/ai-services/text-to-speech) — official TTS provider (D5/D6/D7)
+- [edge-tts](https://github.com/rany2/edge-tts) — unofficial, no-API-key TTS provider, the default (D31)
 - [Cnam-LMSSC/wav2vec2-french-phonemizer](https://huggingface.co/Cnam-LMSSC/wav2vec2-french-phonemizer) — free French phoneme recognition (default free decoder, D47)
 - bofenghuang's wav2vec2 French phoneme CTC model — the compared alternative free decoder (`wav2vec2_bofenghuang`, D45)
 - [Piper](https://github.com/rhasspy/piper) (MIT) — local TTS, used only to generate the diagnostic audio (D43)
-- [OpenPronounce](https://github.com/Halleck45/OpenPronounce) and [Echoic](https://github.com/xialeistudio/echoic) — open-source pronunciation-assessment tools whose free-decode + alignment approach informed Decision Log D36's redesign
+- [OpenPronounce](https://github.com/Halleck45/OpenPronounce) and [Echoic](https://github.com/xialeistudio/echoic) — open-source pronunciation-assessment tools whose free-decode + alignment approach informed D36

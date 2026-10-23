@@ -17,7 +17,7 @@ docker compose up --build        # then open http://localhost:8080
 - Mounts `./data` (Lexique400 and the caches) and a named volume `hf-cache` (the wav2vec2 model, downloaded on first start).
 - The UI says "Loading the speech model" until `/api/health` reports `ready` (~12 s after the container is up, D52).
 - Open it as `http://localhost:8080`: browsers only allow the microphone on `localhost` or `https`.
-- The Docker files were validated with `docker compose config` only; the images were NOT built in the session that wrote them (no Docker daemon, no access to the PyTorch wheel index). Expect to fix small things on the first build.
+- The Docker images were first written without a Docker daemon (validated with `docker compose config` only) and have since been built and run successfully by the author. Safari and Firefox recordings remain untested.
 
 ## Option B: two processes (development)
 
