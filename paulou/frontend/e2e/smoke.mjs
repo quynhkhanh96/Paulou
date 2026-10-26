@@ -41,7 +41,7 @@ await step("form is shown", async () => {
 await step("prepare a sentence", async () => {
   await page.getByLabel(/which sentence/i).fill("Bonjour les petits amis");
   await page.getByRole("button", { name: /prepare/i }).click();
-  await page.getByRole("button", { name: "petits amis" }).waitFor({ timeout: 15000 });
+  await page.getByRole("tab", { name: "petits amis" }).waitFor({ timeout: 15000 });
   await shot("2-practice");
 });
 await step("model becomes ready and recording unlocks", async () => {
@@ -54,7 +54,7 @@ await step("listening plays a real clip", async () => {
   if (!audioResponses.some((r) => r.startsWith("200 audio/mpeg"))) throw new Error(`no 200 audio/mpeg (${audioResponses})`);
 });
 await step("record with the real MediaRecorder, send, see the result", async () => {
-  await page.getByRole("button", { name: "petits amis" }).click();
+  await page.getByRole("tab", { name: "petits amis" }).click();
   await page.getByRole("button", { name: /record this chunk/i }).click();
   await page.getByRole("button", { name: /stop and check/i }).waitFor();
   await page.waitForTimeout(1500);
@@ -70,6 +70,31 @@ await step("drill one unit", async () => {
   await page.waitForTimeout(1200);
   await page.getByRole("button", { name: /stop and check/i }).click();
   await page.getByRole("list", { name: /sound by sound/i }).first().waitFor({ timeout: 15000 });
+});
+
+await step("practise the whole sentence", async () => {
+  await page.getByRole("tab", { name: "Whole sentence" }).click();
+  await page.getByRole("button", { name: /record the whole sentence/i }).click();
+  await page.waitForTimeout(1500);
+  await page.getByRole("button", { name: /stop and check/i }).click();
+  await page.getByRole("list", { name: /sound by sound/i }).first().waitFor({ timeout: 15000 });
+  const groups = await page.getByRole("group", { name: /^Chunk \d/ }).count();
+  if (groups < 2) throw new Error(`expected results grouped by chunk, got ${groups} groups`);
+  await shot("4-whole-sentence");
+});
+await step("pronunciation guide opens and practice is kept", async () => {
+  await page.getByRole("tab", { name: "Pronunciation guide" }).click();
+  await page.getByRole("heading", { name: "Nasal vowels" }).waitFor();
+  const before = audioResponses.length;
+  await page.getByRole("button", { name: 'Listen to "si"' }).click();
+  await page.waitForTimeout(800);
+  if (audioResponses.length <= before || !audioResponses.at(-1).startsWith("200 audio/mpeg")) {
+    throw new Error(`guide example did not play (${audioResponses.slice(before)})`);
+  }
+  await page.getByRole("heading", { name: "/i/" }).scrollIntoViewIfNeeded();
+  await shot("5-guide");
+  await page.getByRole("tab", { name: "Practice" }).click();
+  await page.getByRole("list", { name: /sound by sound/i }).first().waitFor();
 });
 
 await browser.close();

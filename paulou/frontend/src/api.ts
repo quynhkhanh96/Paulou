@@ -60,6 +60,10 @@ export function audioUrl(sentenceId: string, speed: Speed, target?: Target): str
   return `/api/sentences/${encodeURIComponent(sentenceId)}/audio?${params}`;
 }
 
+export function guideAudioUrl(text: string): string {
+  return `/api/guide/audio?${new URLSearchParams({ text })}`;
+}
+
 export async function createAttempt(
   sentenceId: string,
   target: Target,
@@ -68,7 +72,8 @@ export async function createAttempt(
   const form = new FormData();
   form.set("sentence_id", sentenceId);
   if (target.kind === "chunk") form.set("chunk_index", String(target.chunkIndex));
-  else form.set("unit_id", target.unitId);
+  else if (target.kind === "unit") form.set("unit_id", target.unitId);
+  else form.set("whole_sentence", "true");
   form.set("audio", recording, "attempt");
   return parse<Attempt>(await send("/api/attempts", { method: "POST", body: form }));
 }

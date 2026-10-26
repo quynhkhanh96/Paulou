@@ -1,7 +1,9 @@
 import { FormEvent, useRef, useState } from "react";
 import { ApiError, createSentence } from "./api";
 import { Loading } from "./Loading";
+import { Guide } from "./Guide";
 import { Practice } from "./Practice";
+import { panelId, tabId, Tabs } from "./Tabs";
 import type { Sentence } from "./types";
 import { useHealth } from "./useHealth";
 
@@ -10,6 +12,7 @@ const MAX_CHARS = 300;
 
 export function App() {
   const health = useHealth();
+  const [view, setView] = useState<string>("practice");
   const [text, setText] = useState("");
   const [sentence, setSentence] = useState<Sentence | null>(null);
   const [preparing, setPreparing] = useState(false);
@@ -52,6 +55,21 @@ export function App() {
         {health?.status === "warming_up" && <p className="status">Loading the speech model…</p>}
       </header>
 
+      <Tabs
+        idPrefix="main"
+        ariaLabel="Sections"
+        variant="main"
+        selected={view}
+        onSelect={setView}
+        items={[
+          { id: "practice", label: "Practice" },
+          { id: "guide", label: "Pronunciation guide" },
+        ]}
+      />
+
+      {/* Both panels stay mounted: switching to the guide must not lose a
+          recording or a result (D60). */}
+      <div role="tabpanel" id={panelId("main", "practice")} aria-labelledby={tabId("main", "practice")} hidden={view !== "practice"} className="main-panel">
       {preparing ? (
         <Loading onCancel={cancel} />
       ) : sentence ? (
@@ -97,6 +115,10 @@ export function App() {
           )}
         </form>
       )}
+      </div>
+      <div role="tabpanel" id={panelId("main", "guide")} aria-labelledby={tabId("main", "guide")} hidden={view !== "guide"}>
+        <Guide />
+      </div>
     </main>
   );
 }

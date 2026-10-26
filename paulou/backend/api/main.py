@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.dependencies import AppState
-from backend.api.routers import attempts, health, sentences
+from backend.api.routers import attempts, guide, health, sentences
 from backend.api.settings import Settings
 from backend.api.store import SentenceStore
 
@@ -57,7 +57,7 @@ def create_app(
         allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
-    for router in (health.router, sentences.router, attempts.router):
+    for router in (health.router, sentences.router, attempts.router, guide.router):
         app.include_router(router, prefix="/api")
     return app
 

@@ -423,6 +423,29 @@ replacing the two-branch GOP/free-decode architecture
 **Tradeoff accepted:** A Node toolchain is now required for development. The timeline view, which would help learners see where an extra sound occurred, is deferred. `PronunciationUnit.syllables` and stress have no owning stage (Roadmap open question), so the Architecture Spec's "syllable breakdown + stress marking" is not shown; only IPA and phonemes are. English-only UI.
 **Status:** Locked in for MVP.
 
+### D59 — Whole-sentence practice is a target of `/attempts`; chunks and the sentence are tabs
+**Decision:** `POST /api/attempts` accepts a third target, `whole_sentence=true`, besides `chunk_index` and `unit_id` (exactly one is required). The backend concatenates the units of every chunk in order and calls the unchanged `PaulouPipeline.score_attempt`. The response carries `whole_sentence: bool`. In the UI the chunks and a "Whole sentence" entry are real tabs (WAI-ARIA tablist, attached to their panel), with the sentence tab last and the first chunk selected by default; results of a sentence attempt are grouped by chunk.
+**Rationale:** `score_attempt` already takes a flat list of units and `score_chunk` aligns one canonical sequence against one recording, so no pipeline change was needed. The earlier pill-shaped buttons looked like tags (the same `chip` style as the example sentences) and were not read as separate practice areas. Sentence last mirrors the learning path (parts, then the whole).
+**Tradeoff accepted:** Not tested on a real long recording with the real model: pauses between chunks and decoder behaviour on 5-15 s of speech are unverified. A liaison across a chunk boundary is still shown as an extra sound (D51). Attempt results are cleared when the tab changes.
+**Status:** Locked in for MVP; verify with real recordings.
+
+### D60 — Pronunciation guide is static frontend content in its own top-level tab
+**Decision:** A "Pronunciation guide" tab next to "Practice" (always visible, including on the start page). Its content (vowels, nasal vowels, semi-vowels, consonants, linking and rhythm, each with IPA, how to make the sound, spellings and examples) is plain data in `frontend/src/guideData.ts`. Both tabs stay mounted, so opening the guide does not lose a recording or a result. No audio examples yet.
+**Rationale:** The guide needs no pipeline or backend; static data keeps it testable (a test checks that the whole French phoneme inventory is covered) and independent of D13/D14. Audio examples would need a new endpoint that synthesizes arbitrary words, which is a separate decision.
+**Tradeoff accepted:** Content is written for standard Parisian French and in English only; it has not been reviewed by a phonetician or native speaker.
+**Status:** Locked in for MVP; revisit with audio examples.
+
+### D61 — Small shared `Tabs` UI component
+**Decision:** One accessible `Tabs` component (`frontend/src/Tabs.tsx`: roles, roving tabindex, arrow/Home/End keys) is used for both the top-level tabs and the practice tabs. Panels are rendered by the caller.
+**Rationale:** Two places need identical keyboard and ARIA behaviour; duplicating it risks drift. This is a UI helper, not a new backend abstraction layer, so it does not touch the module boundary rules.
+**Status:** Locked in.
+
+### D62 — Guide examples are read by the reference TTS on demand; the sounds themselves have no audio
+**Decision:** Each example word in the pronunciation guide has a play button. It calls `GET /api/guide/audio?text=…`, which the backend answers with `PaulouPipeline.synthesize_text` (new thin method: `tts.synthesize(text, rate)[0]`), so the audio goes through the same TTS provider and disk cache as sentence audio (D7). The text is restricted to letters, spaces, apostrophes and hyphens, at most 40 characters. The isolated sounds (/i/, /y/, ...) get no button.
+**Rationale:** Reading a word needs no new stage and no static audio files in the repo. TTS cannot pronounce a bare IPA symbol: the alternatives (a hand-picked carrier syllable, playing the three examples in a row, Azure SSML `<phoneme>` with an Azure key) were offered and the user chose examples only. The restriction keeps the endpoint from being an open text-to-speech proxy, since the backend port is published by Docker Compose (D53).
+**Tradeoff accepted:** Needs the same network access as sentence preparation (edge-tts, D31); offline, the buttons show "audio unavailable". Not verified with the real voice: the sandbox that built it cannot reach edge-tts, so the buttons were tested only with a stub pipeline, and how each isolated word sounds is unchecked. Examples are read as single words, so a word like "y" or "eau" may be read oddly by the TTS.
+**Status:** Locked in for MVP; revisit with isolated-sound audio if Azure becomes a provider in use.
+
 ---
 
 ## Engineering / codebase architecture

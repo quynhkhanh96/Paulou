@@ -45,6 +45,7 @@ export interface Attempt {
   sentence_id: string;
   chunk_index: number | null;
   unit_id: string | null;
+  whole_sentence: boolean;
   calibrated: boolean;
   results: UnitResult[];
 }
@@ -55,5 +56,8 @@ export interface Health {
   detail: string | null;
 }
 
-export type Target = { kind: "chunk"; chunkIndex: number } | { kind: "unit"; unitId: string };
+export type Target =
+  | { kind: "chunk"; chunkIndex: number }
+  | { kind: "unit"; unitId: string }
+  | { kind: "sentence" };
 export type Speed = "normal" | "slow";

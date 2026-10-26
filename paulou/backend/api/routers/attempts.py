@@ -19,14 +19,18 @@ def create_attempt(
     sentence_id: str = Form(...),
     chunk_index: int | None = Form(default=None, ge=0),
     unit_id: str | None = Form(default=None),
+    whole_sentence: bool = Form(default=False),
     audio: UploadFile = File(...),
     state: AppState = Depends(get_state),
 ) -> AttemptResponse:
-    """Target is either a whole chunk (`chunk_index`) or a single unit
-    (`unit_id`). The client never sends phonemes: units are looked up
-    server-side from the prepared sentence."""
-    if (chunk_index is None) == (unit_id is None):
-        raise api_error(422, "invalid_target", "Pass exactly one of chunk_index or unit_id.")
+    """Target is a whole chunk (`chunk_index`), a single unit (`unit_id`) or
+    the whole sentence (`whole_sentence=true`, every chunk's units in order,
+    D59). The client never sends phonemes: units are looked up server-side
+    from the prepared sentence."""
+    if (chunk_index is not None) + (unit_id is not None) + whole_sentence != 1:
+        raise api_error(
+            422, "invalid_target", "Pass exactly one of chunk_index, unit_id or whole_sentence."
+        )
     if not state.ready.is_set():
         raise api_error(
             503, "model_not_ready", "The speech model is still loading. Try again in a few seconds."
@@ -36,7 +40,9 @@ def create_attempt(
     if prepared is None:
         raise api_error(404, "sentence_not_found", "This sentence is no longer prepared. Prepare it again.")
 
-    if chunk_index is not None:
+    if whole_sentence:
+        units = [u for chunk in prepared.sentence.chunks for u in chunk.units]
+    elif chunk_index is not None:
         if chunk_index >= len(prepared.sentence.chunks):
             raise api_error(404, "chunk_not_found", "No such chunk.")
         units = prepared.sentence.chunks[chunk_index].units
@@ -69,4 +75,6 @@ def create_attempt(
         logger.exception("score_attempt failed")
         raise api_error(500, "scoring_failed", "Scoring failed. Check the server log.")
 
-    return to_attempt_response(sentence_id, chunk_index, unit_id, results, state.calibrated)
+    return to_attempt_response(
+        sentence_id, chunk_index, unit_id, results, state.calibrated, whole_sentence=whole_sentence
+    )

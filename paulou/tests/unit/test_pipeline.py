@@ -116,6 +116,15 @@ def test_analyze_sentence_drops_chunks_without_units_and_renumbers(monkeypatch):
     assert [u.id for c in sentence.chunks for u in c.units] == ["c0_unit_0"]
 
 
+def test_synthesize_text_returns_audio_for_free_text_without_a_sentence():
+    TTS = _register_stubs()
+    pipe = PaulouPipeline(CONFIG, STATS)
+
+    assert pipe.synthesize_text("ici", rate=0.7) == b"audio"
+    assert pipe.synthesize_text("vie") == b"audio"
+    assert TTS.calls[-2:] == [("ici", 0.7), ("vie", 1.0)]
+
+
 def test_synthesize_reference_runs_one_pass_and_locates_spans(monkeypatch):
     TTS = _register_stubs()
     monkeypatch.setattr(

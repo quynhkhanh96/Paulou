@@ -3,6 +3,7 @@ import { ApiError, audioUrl, createAttempt } from "./api";
 import { PlayButton } from "./PlayButton";
 import { RecordButton } from "./Recorder";
 import { Results } from "./Results";
+import { panelId, tabId, Tabs } from "./Tabs";
 import type { Attempt, Health, Sentence, Target } from "./types";
 import { useRecorder } from "./useRecorder";
 
@@ -18,7 +19,9 @@ const UNIT_KIND: Record<string, string> = {
 };
 
 export function Practice({ sentence, health, onExpired }: Props) {
-  const [chunkIndex, setChunkIndex] = useState(0);
+  // "sentence" or a chunk index as a string. Chunks come first: the learner
+  // drills the parts, then puts the whole sentence together (D59).
+  const [tab, setTab] = useState<string>("0");
   const [unitId, setUnitId] = useState<string | null>(null);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
@@ -27,8 +30,14 @@ export function Practice({ sentence, health, onExpired }: Props) {
   const recorder = useRecorder();
   const lastUrl = useRef<string | null>(null);
 
+  const wholeSentence = tab === "sentence";
+  const chunkIndex = wholeSentence ? 0 : Number(tab);
   const chunk = sentence.chunks[chunkIndex];
-  const target: Target = unitId ? { kind: "unit", unitId } : { kind: "chunk", chunkIndex };
+  const target: Target = wholeSentence
+    ? { kind: "sentence" }
+    : unitId
+      ? { kind: "unit", unitId }
+      : { kind: "chunk", chunkIndex };
 
   useEffect(
     () => () => {
@@ -41,8 +50,8 @@ export function Practice({ sentence, health, onExpired }: Props) {
     setAttempt(null);
     setError(null);
   };
-  const chooseChunk = (index: number) => {
-    setChunkIndex(index);
+  const chooseTab = (id: string) => {
+    setTab(id);
     setUnitId(null);
     reset();
   };
@@ -70,8 +79,8 @@ export function Practice({ sentence, health, onExpired }: Props) {
   };
 
   const modelReady = health?.status === "ready";
-  const unit = unitId ? chunk.units.find((u) => u.id === unitId) : null;
-  const clipTarget: Target = target;
+  const unit = !wholeSentence && unitId ? chunk.units.find((u) => u.id === unitId) : null;
+  const clipTarget = wholeSentence ? undefined : target;
 
   return (
     <div className="practice">
@@ -79,33 +88,46 @@ export function Practice({ sentence, health, onExpired }: Props) {
         <p className="sentence-text" lang="fr">
           {sentence.text}
         </p>
-        <div className="row">
-          <PlayButton src={audioUrl(sentence.sentence_id, "normal")} label="Whole sentence" emoji="🔊" />
-          <PlayButton src={audioUrl(sentence.sentence_id, "slow")} label="Whole sentence, slowly" emoji="🐢" />
-        </div>
       </section>
 
-      <nav className="chunk-tabs" aria-label="Chunks">
-        {sentence.chunks.map((c) => (
-          <button
-            key={c.index}
-            type="button"
-            className={`chip ${c.index === chunkIndex ? "is-active" : ""}`}
-            aria-current={c.index === chunkIndex ? "true" : undefined}
-            onClick={() => chooseChunk(c.index)}
-            lang="fr"
-          >
-            {c.text}
-          </button>
-        ))}
-      </nav>
+      <div className="tabbed">
+      <Tabs
+        idPrefix="practice"
+        ariaLabel="What to practice"
+        selected={tab}
+        onSelect={chooseTab}
+        items={[
+          ...sentence.chunks.map((c) => ({
+            id: String(c.index),
+            label: (
+              <span lang="fr">
+                <span className="tab-num" aria-hidden="true">
+                  {c.index + 1}
+                </span>
+                {c.text}
+              </span>
+            ),
+          })),
+          { id: "sentence", label: "Whole sentence" },
+        ]}
+      />
 
-      <section className="glass chunk-card" aria-label={`Practice: ${chunk.text}`}>
+      <section
+        className="glass tab-panel"
+        role="tabpanel"
+        id={panelId("practice", tab)}
+        aria-labelledby={tabId("practice", tab)}
+      >
         <div className="row">
           <PlayButton src={audioUrl(sentence.sentence_id, "normal", clipTarget)} label="Listen" emoji="🔊" />
           <PlayButton src={audioUrl(sentence.sentence_id, "slow", clipTarget)} label="Listen slowly" emoji="🐢" />
         </div>
 
+        {wholeSentence ? (
+          <p className="note">
+            Say the whole sentence in one go, as you would in a conversation. Results are grouped by chunk.
+          </p>
+        ) : (
         <div className="units" role="group" aria-label="Practice a single word or link">
           <button type="button" className={`unit ${unitId === null ? "is-active" : ""}`} onClick={() => chooseUnit(null)}>
             <span className="unit-words">Whole chunk</span>
@@ -131,6 +153,7 @@ export function Practice({ sentence, health, onExpired }: Props) {
             </button>
           ))}
         </div>
+        )}
 
         {!modelReady && health?.status !== "error" && (
           <p className="note">The speech model is still loading. Recording unlocks in a few seconds.</p>
@@ -147,7 +170,7 @@ export function Practice({ sentence, health, onExpired }: Props) {
           busy={busy}
           onStart={() => void recorder.start()}
           onStop={() => void stopAndScore()}
-          idleLabel={unit ? `Record "${unit.words.join(" ")}"` : "Record this chunk"}
+          idleLabel={wholeSentence ? "Record the whole sentence" : unit ? `Record "${unit.words.join(" ")}"` : "Record this chunk"}
         />
 
         {error && (
@@ -161,8 +184,9 @@ export function Practice({ sentence, health, onExpired }: Props) {
           </div>
         )}
       </section>
+      </div>
 
-      {attempt && <Results attempt={attempt} chunk={chunk} recordingUrl={recordingUrl} />}
+      {attempt && <Results attempt={attempt} sentence={sentence} recordingUrl={recordingUrl} />}
     </div>
   );
 }

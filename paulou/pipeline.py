@@ -133,6 +133,13 @@ class PaulouPipeline:
         chunk_spans, unit_spans = locate_spans(sentence, word_timings)
         return ReferenceAudio(audio=audio, chunk_spans=chunk_spans, unit_spans=unit_spans)
 
+    def synthesize_text(self, text: str, rate: float = 1.0) -> bytes:
+        """Audio (mp3) for a short free text, e.g. a word of the pronunciation
+        guide (D62). No timings and no span location: unlike
+        `synthesize_reference` it does not need a `Sentence`."""
+        audio, _ = self.tts.synthesize(text, rate=rate)
+        return audio
+
     def score_attempt(self, units: list[PronunciationUnit], audio: bytes) -> list[UnitResult]:
         return score_chunk(
             units, audio, self.free_decoder, self.phone_stats, self.fallback_phone_class

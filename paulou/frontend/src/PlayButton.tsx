@@ -8,9 +8,11 @@ interface Props {
   src: string;
   label: string;
   emoji?: string;
+  /** Icon-only round button; `label` becomes its accessible name. */
+  compact?: boolean;
 }
 
-export function PlayButton({ src, label, emoji }: Props) {
+export function PlayButton({ src, label, emoji, compact }: Props) {
   const audio = useRef<HTMLAudioElement | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "playing" | "error">("idle");
 
@@ -46,6 +48,21 @@ export function PlayButton({ src, label, emoji }: Props) {
     setStatus("loading");
     element.play().catch(() => setStatus("error"));
   };
+
+  if (compact) {
+    return (
+      <button
+        type="button"
+        className={`btn btn-soft btn-icon ${status === "error" ? "is-error" : ""}`}
+        onClick={toggle}
+        aria-pressed={status === "playing"}
+        aria-label={status === "error" ? `${label} (audio unavailable)` : label}
+        title={status === "error" ? "Audio unavailable" : label}
+      >
+        {status === "playing" ? <StopIcon /> : status === "error" ? <span aria-hidden="true">!</span> : <PlayIcon />}
+      </button>
+    );
+  }
 
   return (
     <button type="button" className="btn btn-soft" onClick={toggle} aria-pressed={status === "playing"}>

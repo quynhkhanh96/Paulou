@@ -1,8 +1,8 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "./App";
 import * as api from "./api";
-import { ATTEMPT, SENTENCE } from "./fixtures";
+import { ATTEMPT, SENTENCE, SENTENCE_ATTEMPT } from "./fixtures";
 
 vi.mock("./api", async (importOriginal) => ({ ...(await importOriginal<typeof import("./api")>()), getHealth: vi.fn(), createSentence: vi.fn(), createAttempt: vi.fn() }));
 
@@ -61,7 +61,7 @@ describe("App", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/preparing your sentence/i);
     resolve(SENTENCE);
 
-    expect(await screen.findByRole("button", { name: "les amis" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "les amis" })).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
@@ -85,7 +85,7 @@ describe("App", () => {
     mocked.createAttempt.mockResolvedValue(ATTEMPT);
     const user = await prepareSentence();
 
-    await user.click(await screen.findByRole("button", { name: "les amis" }));
+    await user.click(await screen.findByRole("tab", { name: "les amis" }));
     await user.click(screen.getByRole("button", { name: /record this chunk/i }));
     expect(recorderCalls.start).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole("button", { name: /stop and check/i }));
@@ -108,7 +108,7 @@ describe("App", () => {
     mocked.createAttempt.mockResolvedValue({ ...ATTEMPT, chunk_index: null, unit_id: "c1_unit_0" });
     const user = await prepareSentence();
 
-    await user.click(await screen.findByRole("button", { name: "les amis" }));
+    await user.click(await screen.findByRole("tab", { name: "les amis" }));
     await user.click(screen.getByRole("button", { name: /^les amis \/lezami\/ liaison \/z\/$/ }));
     await user.click(screen.getByRole("button", { name: /record "les amis"/i }));
     await user.click(screen.getByRole("button", { name: /stop and check/i }));
@@ -137,5 +137,79 @@ describe("App", () => {
 
     expect(await screen.findByRole("button", { name: /record this chunk/i })).toBeDisabled();
     expect(screen.getAllByText(/speech model is still loading/i).length).toBeGreaterThan(0);
+  });
+
+  it("practises the whole sentence from its own tab and groups the results by chunk", async () => {
+    mocked.createSentence.mockResolvedValue(SENTENCE);
+    mocked.createAttempt.mockResolvedValue(SENTENCE_ATTEMPT);
+    const user = await prepareSentence();
+
+    await user.click(await screen.findByRole("tab", { name: "Whole sentence" }));
+    expect(screen.getByRole("tab", { name: "Whole sentence" })).toHaveAttribute("aria-selected", "true");
+    await user.click(screen.getByRole("button", { name: /record the whole sentence/i }));
+    await user.click(screen.getByRole("button", { name: /stop and check/i }));
+
+    await waitFor(() => expect(mocked.createAttempt).toHaveBeenCalledTimes(1));
+    expect(mocked.createAttempt.mock.calls[0][1]).toEqual({ kind: "sentence" });
+    expect(await screen.findByRole("group", { name: "Chunk 1: Bonjour" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Chunk 2: les amis" })).toBeInTheDocument();
+    expect(screen.getAllByRole("list", { name: /sound by sound/i })).toHaveLength(2);
+  });
+
+  it("clears the previous result when another tab is chosen", async () => {
+    mocked.createSentence.mockResolvedValue(SENTENCE);
+    mocked.createAttempt.mockResolvedValue(ATTEMPT);
+    const user = await prepareSentence();
+    await user.click(screen.getByRole("button", { name: /record this chunk/i }));
+    await user.click(screen.getByRole("button", { name: /stop and check/i }));
+    await screen.findByRole("list", { name: /sound by sound/i });
+
+    await user.click(screen.getByRole("tab", { name: "Whole sentence" }));
+    expect(screen.queryByRole("list", { name: /sound by sound/i })).not.toBeInTheDocument();
+  });
+
+  it("chunk tabs are tabs of a tablist and arrow keys move between them", async () => {
+    mocked.createSentence.mockResolvedValue(SENTENCE);
+    const user = await prepareSentence();
+
+    const tablist = await screen.findByRole("tablist", { name: /what to practice/i });
+    expect(within(tablist).getAllByRole("tab").map((t) => t.textContent?.replace(/^\d/, ""))).toEqual([
+      "Bonjour",
+      "les amis",
+      "Whole sentence",
+    ]);
+    await user.click(screen.getByRole("tab", { name: "Bonjour" }));
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: "les amis" })).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{End}");
+    expect(screen.getByRole("tab", { name: "Whole sentence" })).toHaveFocus();
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: "Bonjour" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("opens the pronunciation guide without losing the practice state", async () => {
+    mocked.createSentence.mockResolvedValue(SENTENCE);
+    mocked.createAttempt.mockResolvedValue(ATTEMPT);
+    const user = await prepareSentence();
+    await user.click(screen.getByRole("button", { name: /record this chunk/i }));
+    await user.click(screen.getByRole("button", { name: /stop and check/i }));
+    await screen.findByRole("list", { name: /sound by sound/i });
+
+    await user.click(screen.getByRole("tab", { name: "Pronunciation guide" }));
+    expect(screen.getByRole("heading", { name: "Oral vowels" })).toBeVisible();
+    expect(screen.getByRole("list", { name: /sound by sound/i, hidden: true })).not.toBeVisible();
+
+    await user.click(screen.getByRole("tab", { name: "Practice" }));
+    expect(screen.getByRole("list", { name: /sound by sound/i })).toBeVisible();
+  });
+
+  it("the guide is available from the start page", async () => {
+    await act(async () => {
+      render(<App />);
+    });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Pronunciation guide" }));
+    expect(screen.getByRole("heading", { name: "Nasal vowels" })).toBeVisible();
+    expect(screen.getByLabelText(/which sentence/i)).not.toBeVisible();
   });
 });

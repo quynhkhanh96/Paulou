@@ -55,7 +55,8 @@ All under `/api`. Errors are `{"detail": {"code": "...", "message": "..."}}`.
 | `GET /health` | `{status: warming_up\|ready\|error, calibrated, detail}` |
 | `POST /sentences` `{text}` | prepare a sentence (analyze + normal-speed TTS), synchronous, ~3.5-16 s. Returns `sentence_id`, `chunks[].units[]`. Same text (after whitespace normalization) = same id, prepared once |
 | `GET /sentences/{id}/audio?speed=normal\|slow&chunk=N` or `&unit=ID` | MP3 of the whole sentence, a chunk or a unit. The slow pass (rate 0.7, D6) is made on first request |
-| `POST /attempts` multipart: `sentence_id`, `chunk_index` or `unit_id`, `audio` | score one recording, synchronous (D52). Returns per-unit `ops` (canonical order), `feedback_text`, and `score` fields that are `null` until `calibrated` |
+| `POST /attempts` multipart: `sentence_id`, exactly one of `chunk_index` / `unit_id` / `whole_sentence=true` (D59), `audio` | score one recording, synchronous (D52). Returns per-unit `ops` (canonical order), `feedback_text`, and `score` fields that are `null` until `calibrated` |
+| `GET /guide/audio?text=…` | a short word or phrase read aloud (mp3) for the guide's example buttons (D62). Letters, spaces, apostrophes and hyphens only, at most 40 characters (`max_guide_text_chars`); anything else is `422 invalid_guide_text`. Uses the TTS cache (D7), needs the same network access as sentence preparation |
 
 Error codes: `empty_text`, `text_too_long`, `no_content`, `text_not_supported`, `preparation_failed` (502), `sentence_not_found` (404, prepared sentences live in memory: prepare again), `chunk_not_found`, `unit_not_found`, `invalid_target`, `model_not_ready` (503), `bad_audio`, `audio_too_short`, `audio_too_long`, `audio_too_large` (413), `scoring_failed` (500).
 
@@ -80,3 +81,9 @@ PAULOU_CHROMIUM=/path/to/chromium node e2e/smoke.mjs
 - The overall wording in `feedback_text` ("good effort", "needs work") comes from placeholder scores; the UI says so next to it.
 - Known limits are explained next to a result when the pattern appears: extra sounds that may be a cross-chunk liaison (D51), a dropped schwa (D50 finding), an extra consonant after a nasal vowel (D47).
 - Not built: the audio-timeline view (D37 view 2), progress tracking, auth.
+
+## UI
+
+- **Practice** tab: one tab per chunk plus a **Whole sentence** tab (D59). In a chunk tab you can drill the whole chunk or a single unit; in the sentence tab you record the whole sentence and the results are grouped by chunk.
+- **Pronunciation guide** tab (D60): static reference of French sounds (IPA, how to make each, spellings, examples) and of linking, elision and rhythm. Content lives in `frontend/src/guideData.ts`; it needs no pipeline. Each example has a play button that reads the word with the reference voice (D62); the sounds themselves have no audio, because TTS cannot pronounce a bare IPA symbol. Switching tabs keeps the current practice state.
+- Whole-sentence scoring has only been exercised with the stub pipeline and unit tests, not with a real recording on the real model. A link across a chunk boundary is still shown as an extra sound (D51).

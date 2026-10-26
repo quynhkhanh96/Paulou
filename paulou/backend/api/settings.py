@@ -26,6 +26,7 @@ class Settings:
     timing_offset_ms: int = 50
     slow_rate: float = 0.7  # D6
     max_text_chars: int = 300
+    max_guide_text_chars: int = 40  # D62: a word or a short phrase, not free text
     max_audio_bytes: int = 15 * 1024 * 1024
     min_audio_ms: int = 300
     max_audio_ms: int = 45_000

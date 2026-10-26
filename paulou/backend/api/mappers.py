@@ -74,11 +74,13 @@ def to_attempt_response(
     unit_id: str | None,
     results: list[UnitResult],
     calibrated: bool,
+    whole_sentence: bool = False,
 ) -> AttemptResponse:
     return AttemptResponse(
         sentence_id=sentence_id,
         chunk_index=chunk_index,
         unit_id=unit_id,
+        whole_sentence=whole_sentence,
         calibrated=calibrated,
         results=[to_unit_result_dto(r, calibrated) for r in results],
     )

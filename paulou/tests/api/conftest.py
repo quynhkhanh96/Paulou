@@ -93,6 +93,8 @@ class StubPipeline:
         self.fail_analyze: Exception | None = None
         self.fail_tts: Exception | None = None
         self.analyze_delay_s = 0.0
+        self.synthesize_text_calls: list[tuple[str, float]] = []
+        self.fail_synthesize_text: Exception | None = None
 
     def analyze_sentence(self, text: str) -> Sentence:
         self.analyze_calls.append(text)
@@ -133,6 +135,12 @@ class StubPipeline:
         return ReferenceAudio(
             audio=mp3_bytes(step * len(words)), chunk_spans=chunk_spans, unit_spans=unit_spans
         )
+
+    def synthesize_text(self, text: str, rate: float = 1.0) -> bytes:
+        self.synthesize_text_calls.append((text, rate))
+        if self.fail_synthesize_text:
+            raise self.fail_synthesize_text
+        return mp3_bytes(300)
 
     def score_attempt(self, units, audio: bytes):
         self.free_decoder.canonical = [p for u in units for p in u.phonemes]

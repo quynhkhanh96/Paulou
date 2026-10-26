@@ -34,6 +34,7 @@ export const ATTEMPT: Attempt = {
   sentence_id: "abc123",
   chunk_index: 1,
   unit_id: null,
+  whole_sentence: false,
   calibrated: false,
   results: [
     {
@@ -42,5 +43,17 @@ export const ATTEMPT: Attempt = {
       feedback_text: "Overall: good effort. Missing the z sound.",
       ops: [op("match", "l", "l"), op("match", "e", "e"), op("deletion", "z", null), op("substitution", "a", "ɑ"), op("insertion", null, "t")],
     },
+  ],
+};
+
+export const SENTENCE_ATTEMPT: Attempt = {
+  sentence_id: "abc123",
+  chunk_index: null,
+  unit_id: null,
+  whole_sentence: true,
+  calibrated: false,
+  results: [
+    { unit_id: "c0_unit_0", score: null, feedback_text: "Overall: good effort.", ops: [op("match", "b", "b"), op("match", "ɔ̃", "ɔ̃")] },
+    { unit_id: "c1_unit_0", score: null, feedback_text: "Overall: needs work. Missing the z sound.", ops: [op("match", "l", "l"), op("deletion", "z", null)] },
   ],
 };

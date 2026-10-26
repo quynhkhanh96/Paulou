@@ -62,6 +62,7 @@ class AttemptResponse(BaseModel):
     sentence_id: str
     chunk_index: int | None
     unit_id: str | None
+    whole_sentence: bool = False
     calibrated: bool
     results: list[UnitResultDTO]
 
