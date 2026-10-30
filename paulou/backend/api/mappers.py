@@ -8,11 +8,13 @@ from backend.api.schemas import (
     AttemptResponse,
     ChunkDTO,
     OpDTO,
+    OpKind,
     SentenceResponse,
     UnitDTO,
     UnitResultDTO,
 )
-from core.models import PronunciationUnit, Sentence, UnitResult
+from core.models import AlignmentOp, PronunciationUnit, Sentence, UnitResult
+from stages.speech_assessment.phone_similarity import near_reasons
 
 
 def normalize_text(text: str) -> str:
@@ -49,22 +51,39 @@ def to_sentence_response(sentence_id: str, sentence: Sentence) -> SentenceRespon
     )
 
 
+def classify_op(op: AlignmentOp) -> tuple[OpKind, list[str]]:
+    """(kind, near reason codes). Near/far is decided by `phone_similarity` (D64)."""
+    if op.op_type == "match":
+        return "M", []
+    if op.op_type == "deletion":
+        return "D", []
+    if op.op_type == "insertion":
+        return "I", []
+    reasons = near_reasons(op.canonical_phoneme, op.decoded_phoneme)
+    return ("S", []) if reasons is None else ("S_near", reasons)
+
+
+def to_op_dto(scored, calibrated: bool) -> OpDTO:
+    op = scored.op
+    kind, reasons = classify_op(op)
+    return OpDTO(
+        op_type=op.op_type,
+        kind=kind,
+        near_reasons=reasons,
+        canonical_phoneme=op.canonical_phoneme,
+        decoded_phoneme=op.decoded_phoneme,
+        start_ms=op.start_ms,
+        end_ms=op.end_ms,
+        score=scored.accuracy_score if calibrated else None,
+    )
+
+
 def to_unit_result_dto(result: UnitResult, calibrated: bool) -> UnitResultDTO:
     return UnitResultDTO(
         unit_id=result.unit_id,
         score=result.calibrated_score if calibrated else None,
         feedback_text=result.feedback_text,
-        ops=[
-            OpDTO(
-                op_type=scored.op.op_type,
-                canonical_phoneme=scored.op.canonical_phoneme,
-                decoded_phoneme=scored.op.decoded_phoneme,
-                start_ms=scored.op.start_ms,
-                end_ms=scored.op.end_ms,
-                score=scored.accuracy_score if calibrated else None,
-            )
-            for scored in result.scored_ops
-        ],
+        ops=[to_op_dto(scored, calibrated) for scored in result.scored_ops],
     )
 
 

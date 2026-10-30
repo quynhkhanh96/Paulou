@@ -55,7 +55,7 @@ All under `/api`. Errors are `{"detail": {"code": "...", "message": "..."}}`.
 | `GET /health` | `{status: warming_up\|ready\|error, calibrated, detail}` |
 | `POST /sentences` `{text}` | prepare a sentence (analyze + normal-speed TTS), synchronous, ~3.5-16 s. Returns `sentence_id`, `chunks[].units[]`. Same text (after whitespace normalization) = same id, prepared once |
 | `GET /sentences/{id}/audio?speed=normal\|slow&chunk=N` or `&unit=ID` | MP3 of the whole sentence, a chunk or a unit. The slow pass (rate 0.7, D6) is made on first request |
-| `POST /attempts` multipart: `sentence_id`, exactly one of `chunk_index` / `unit_id` / `whole_sentence=true` (D59), `audio` | score one recording, synchronous (D52). Returns per-unit `ops` (canonical order), `feedback_text`, and `score` fields that are `null` until `calibrated` |
+| `POST /attempts` multipart: `sentence_id`, exactly one of `chunk_index` / `unit_id` / `whole_sentence=true` (D59), `audio` | score one recording, synchronous (D52). Returns per-unit `ops` (canonical order, each with `kind` M / S_near / S / D / I and `near_reasons` codes, D64), `feedback_text`, and `score` fields that are `null` until `calibrated` |
 | `GET /guide/audio?text=…` | a short word or phrase read aloud (mp3) for the guide's example buttons (D62). Letters, spaces, apostrophes and hyphens only, at most 40 characters (`max_guide_text_chars`); anything else is `422 invalid_guide_text`. Uses the TTS cache (D7), needs the same network access as sentence preparation |
 
 Error codes: `empty_text`, `text_too_long`, `no_content`, `text_not_supported`, `preparation_failed` (502), `sentence_not_found` (404, prepared sentences live in memory: prepare again), `chunk_not_found`, `unit_not_found`, `invalid_target`, `model_not_ready` (503), `bad_audio`, `audio_too_short`, `audio_too_long`, `audio_too_large` (413), `scoring_failed` (500).
@@ -77,10 +77,14 @@ PAULOU_CHROMIUM=/path/to/chromium node e2e/smoke.mjs
 
 ## What the UI shows, and what it does not
 
-- Per unit: the expected sounds in order, marked match / substitution / extra sound / missing (canonical view, D37 view 1), plus `feedback_text`. No numeric score while `calibrated=false`.
-- The overall wording in `feedback_text` ("good effort", "needs work") comes from placeholder scores; the UI says so next to it.
+- **Score line**: "x/y words correct · a/b sounds correct · n close". Counts only, no numeric score while `calibrated=false` (D57).
+- **Needs fixing** (first) and **You did well**: at most 2 items each, far errors before near ones, an empty box is hidden. Praise is concrete (a hard sound done right, an all-correct word, a list of correct sounds); there is no comparison with earlier attempts.
+- **Word chips** (one per pronunciation unit; ok / close / error). Clicking one opens a card with the sound-by-sound track changes (expected sound is the spine: correct, close, replaced, missing, extra), its own boxes, **Hear the model** and **Hear yourself**. The first non-ok unit opens by itself.
+- Wording is generated in the frontend from the ops (`learnerText.tsx`, English). `feedback_text` stays in the API but this view does not show it (partly supersedes D57).
+- Near vs far is decided in the backend by `stages/speech_assessment/phone_similarity.py` (hand-written feature tables, no model); the API sends `kind` and reason codes, the frontend only maps them to sentences. `confidence` is not exposed.
+- **Hear yourself** decodes the recording in the browser (Web Audio) and plays the slice between the unit's first and last timestamp (+80 ms padding). It depends on the recognizer timestamps (D37) lining up with the upload; this has only been checked with the stub pipeline, and not in Safari or Firefox.
 - Known limits are explained next to a result when the pattern appears: extra sounds that may be a cross-chunk liaison (D51), a dropped schwa (D50 finding), an extra consonant after a nasal vowel (D47).
-- Not built: the audio-timeline view (D37 view 2), progress tracking, auth.
+- Not built: the audio-timeline view (D37 view 2), the expert/debug drawer, progress tracking, auth.
 
 ## UI
 

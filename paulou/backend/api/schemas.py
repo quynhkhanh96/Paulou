@@ -42,8 +42,14 @@ class SentenceResponse(BaseModel):
     chunks: list[ChunkDTO]
 
 
+OpKind = Literal["M", "S_near", "S", "D", "I"]
+
+
 class OpDTO(BaseModel):
     op_type: OpType
+    # M match, S_near close substitution, S far substitution, D deletion, I insertion (D64)
+    kind: OpKind
+    near_reasons: list[str] = []  # reason codes; only for S_near (may be empty)
     canonical_phoneme: str | None
     decoded_phoneme: str | None
     start_ms: int | None

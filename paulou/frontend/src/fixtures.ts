@@ -21,12 +21,23 @@ export const SENTENCE: Sentence = {
   ],
 };
 
-export const op = (op_type: Op["op_type"], canonical: string | null, decoded: string | null): Op => ({
+const KIND: Record<Op["op_type"], Op["kind"]> = { match: "M", substitution: "S", insertion: "I", deletion: "D" };
+
+export const op = (
+  op_type: Op["op_type"],
+  canonical: string | null,
+  decoded: string | null,
+  kind: Op["kind"] = KIND[op_type],
+  near_reasons: string[] = [],
+  start_ms = 0,
+): Op => ({
   op_type,
+  kind,
+  near_reasons,
   canonical_phoneme: canonical,
   decoded_phoneme: decoded,
-  start_ms: op_type === "deletion" ? null : 0,
-  end_ms: op_type === "deletion" ? null : 50,
+  start_ms: op_type === "deletion" ? null : start_ms,
+  end_ms: op_type === "deletion" ? null : start_ms + 50,
   score: null,
 });
 
@@ -41,7 +52,7 @@ export const ATTEMPT: Attempt = {
       unit_id: "c1_unit_0",
       score: null,
       feedback_text: "Overall: good effort. Missing the z sound.",
-      ops: [op("match", "l", "l"), op("match", "e", "e"), op("deletion", "z", null), op("substitution", "a", "ɑ"), op("insertion", null, "t")],
+      ops: [op("match", "l", "l"), op("match", "e", "e"), op("deletion", "z", null), op("substitution", "a", "ɑ", "S_near", ["too_far_back"]), op("insertion", null, "t")],
     },
   ],
 };

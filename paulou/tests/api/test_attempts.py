@@ -25,6 +25,28 @@ def test_chunk_attempt_scores_every_unit_of_the_chunk(client, prepared):
     assert deleted["start_ms"] is None
 
 
+def test_whole_sentence_attempt_scores_every_unit_of_every_chunk_in_order(client, prepared, pipeline):
+    response = _post(client, prepared["sentence_id"], whole_sentence="true")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["whole_sentence"], body["chunk_index"], body["unit_id"]) == (True, None, None)
+    expected = [u["id"] for chunk in prepared["chunks"] for u in chunk["units"]]
+    assert len(expected) > 2
+    assert [r["unit_id"] for r in body["results"]] == expected
+
+
+def test_chunk_and_unit_attempts_are_not_whole_sentence(client, prepared):
+    assert _post(client, prepared["sentence_id"], chunk_index=0).json()["whole_sentence"] is False
+
+
+def test_ops_carry_their_kind(client, prepared):
+    body = _post(client, prepared["sentence_id"], chunk_index=0).json()
+    kinds = [o["kind"] for o in body["results"][0]["ops"]]
+    assert kinds == ["M", "D", "M", "M", "M", "M", "M"]
+    assert all(o["near_reasons"] == [] for r in body["results"] for o in r["ops"])
+
+
 def test_unit_attempt_scores_only_that_unit(client, prepared):
     response = _post(client, prepared["sentence_id"], unit_id="c1_unit_1")
 
@@ -79,7 +101,12 @@ def test_recorded_webm_reaches_the_recognizer_as_readable_wav(client, prepared, 
 
 def test_exactly_one_target_is_required(client, prepared):
     sid = prepared["sentence_id"]
-    for fields in ({}, {"chunk_index": 0, "unit_id": "c0_unit_0"}):
+    for fields in (
+        {},
+        {"chunk_index": 0, "unit_id": "c0_unit_0"},
+        {"chunk_index": 0, "whole_sentence": "true"},
+        {"unit_id": "c0_unit_0", "whole_sentence": "true"},
+    ):
         response = _post(client, sid, **fields)
         assert response.status_code == 422
         assert response.json()["detail"]["code"] == "invalid_target"

@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { releaseFocus, takeFocus } from "./audioFocus";
 import { PlayIcon, StopIcon } from "./icons";
-
-// One clip at a time: starting a clip stops the previous one.
-let current: HTMLAudioElement | null = null;
 
 interface Props {
   src: string;
@@ -14,15 +12,23 @@ interface Props {
 
 export function PlayButton({ src, label, emoji, compact }: Props) {
   const audio = useRef<HTMLAudioElement | null>(null);
+  const stop = useRef<() => void>(() => {});
+  const mounted = useRef(true);
   const [status, setStatus] = useState<"idle" | "loading" | "playing" | "error">("idle");
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    stop.current = () => {
       audio.current?.pause();
-      if (current === audio.current) current = null;
-    },
-    [],
-  );
+      if (mounted.current) setStatus("idle");
+    };
+    const stopNow = stop.current;
+    return () => {
+      mounted.current = false;
+      audio.current?.pause();
+      releaseFocus(stopNow);
+    };
+  }, []);
 
   // A different clip (another chunk or unit) starts from scratch.
   useEffect(() => {
@@ -37,10 +43,9 @@ export function PlayButton({ src, label, emoji, compact }: Props) {
       setStatus("idle");
       return;
     }
-    if (current && current !== audio.current) current.pause();
+    takeFocus(stop.current);
     const element = audio.current ?? new Audio(src);
     audio.current = element;
-    current = element;
     element.onplaying = () => setStatus("playing");
     element.onended = () => setStatus("idle");
     element.onerror = () => setStatus("error");

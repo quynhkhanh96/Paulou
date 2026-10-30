@@ -61,8 +61,28 @@ await step("record with the real MediaRecorder, send, see the result", async () 
   await page.getByRole("button", { name: /stop and check/i }).click();
   await page.getByRole("list", { name: /sound by sound/i }).first().waitFor({ timeout: 15000 });
   await shot("3-result");
-  const types = await page.locator(".phone").evaluateAll((els) => els.map((e) => e.className.split(" ")[1]));
-  if (!types.includes("deletion") || !types.includes("match")) throw new Error(`unexpected ops: ${types}`);
+  const kinds = await page.locator(".track .tk").evaluateAll((els) => els.map((e) => e.className.split(" ")[1]));
+  if (!kinds.includes("tk-D") || !kinds.includes("tk-M")) throw new Error(`unexpected ops: ${kinds}`);
+  const score = await page.locator(".score").innerText();
+  if (!/words correct/.test(score) || !/sounds correct/.test(score)) throw new Error(`score line: ${score}`);
+  const boxes = await page.locator(".results > .cols h3").allInnerTexts();
+  if (boxes[0] !== "Needs fixing") throw new Error(`boxes: ${boxes}`);
+});
+await step("a word chip opens its card, the clips play", async () => {
+  const chip = page.locator("button.wchip").first();
+  await chip.waitFor();
+  if ((await chip.getAttribute("aria-expanded")) !== "true") await chip.click();
+  const card = page.getByRole("region", { name: /^Details:/ });
+  await card.waitFor();
+  const before = audioResponses.length;
+  await card.getByRole("button", { name: /hear the model/i }).click();
+  await page.waitForTimeout(800);
+  if (audioResponses.length <= before || !audioResponses.at(-1).startsWith("200 audio/mpeg")) throw new Error("model clip did not load");
+  await card.getByRole("button", { name: /hear yourself/i }).click();
+  await page.waitForTimeout(600);
+  const label = await card.getByRole("button", { name: /hear yourself|loading|could not play/i }).innerText();
+  if (/could not play/i.test(label)) throw new Error(`own clip: ${label}`);
+  await shot("3b-card");
 });
 await step("drill one unit", async () => {
   await page.locator("button.unit", { hasText: "petits" }).click();

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, audioUrl, createAttempt } from "./api";
 import { PlayButton } from "./PlayButton";
 import { RecordButton } from "./Recorder";
-import { Results } from "./Results";
+import { LearnerResults } from "./LearnerResults";
 import { panelId, tabId, Tabs } from "./Tabs";
 import type { Attempt, Health, Sentence, Target } from "./types";
 import { useRecorder } from "./useRecorder";
@@ -25,6 +25,8 @@ export function Practice({ sentence, health, onExpired }: Props) {
   const [unitId, setUnitId] = useState<string | null>(null);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
+  const [recording, setRecording] = useState<Blob | null>(null);
+  const [attemptNo, setAttemptNo] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const recorder = useRecorder();
@@ -66,10 +68,12 @@ export function Practice({ sentence, health, onExpired }: Props) {
     if (lastUrl.current) URL.revokeObjectURL(lastUrl.current);
     lastUrl.current = URL.createObjectURL(blob);
     setRecordingUrl(lastUrl.current);
+    setRecording(blob);
     setBusy(true);
     setError(null);
     try {
       setAttempt(await createAttempt(sentence.sentence_id, target, blob));
+      setAttemptNo((n) => n + 1);
     } catch (e) {
       setAttempt(null);
       setError(e instanceof ApiError ? e : new ApiError(0, "unknown", "Something went wrong. Try again."));
@@ -186,7 +190,7 @@ export function Practice({ sentence, health, onExpired }: Props) {
       </section>
       </div>
 
-      {attempt && <Results attempt={attempt} sentence={sentence} recordingUrl={recordingUrl} />}
+      {attempt && <LearnerResults key={attemptNo} attempt={attempt} sentence={sentence} recording={recording} recordingUrl={recordingUrl} />}
     </div>
   );
 }

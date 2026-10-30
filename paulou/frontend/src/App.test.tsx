@@ -97,9 +97,8 @@ describe("App", () => {
 
     const strip = await screen.findByRole("list", { name: /sound by sound/i });
     expect(strip.querySelectorAll("li")).toHaveLength(5);
-    expect(screen.getByText(/Missing the z sound/)).toBeInTheDocument();
+    expect(screen.getAllByText(/missing/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/links this word to the next chunk/i)).toBeInTheDocument();
-    expect(screen.getByText(/placeholder until scoring is calibrated/i)).toBeInTheDocument();
     expect(screen.queryByText(/\d+\s*\/\s*100/)).not.toBeInTheDocument(); // no numeric score
   });
 
@@ -153,7 +152,9 @@ describe("App", () => {
     expect(mocked.createAttempt.mock.calls[0][1]).toEqual({ kind: "sentence" });
     expect(await screen.findByRole("group", { name: "Chunk 1: Bonjour" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Chunk 2: les amis" })).toBeInTheDocument();
-    expect(screen.getAllByRole("list", { name: /sound by sound/i })).toHaveLength(2);
+    // the first word that needs work is open; the all-correct one stays closed
+    expect(screen.getAllByRole("list", { name: /sound by sound/i })).toHaveLength(1);
+    expect(document.querySelector(".score")).toHaveTextContent("1/2 words correct");
   });
 
   it("clears the previous result when another tab is chosen", async () => {

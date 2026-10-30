@@ -2,6 +2,8 @@
 
 export type UnitType = "single" | "liaison_group" | "elision_group";
 export type OpType = "match" | "substitution" | "insertion" | "deletion";
+// M match, S_near close substitution, S far substitution, D deletion, I insertion (D64).
+export type OpKind = "M" | "S_near" | "S" | "D" | "I";
 
 export interface Unit {
   id: string;
@@ -27,6 +29,8 @@ export interface Sentence {
 
 export interface Op {
   op_type: OpType;
+  kind: OpKind;
+  near_reasons: string[]; // reason codes, only for S_near
   canonical_phoneme: string | null;
   decoded_phoneme: string | null;
   start_ms: number | null;
