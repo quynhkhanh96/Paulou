@@ -1,74 +1,88 @@
+import unicodedata
+
 import pytest
 
-from stages.speech_assessment.phone_similarity import near_reasons
+from stages.speech_assessment import phone_similarity
+from stages.speech_assessment.phone_similarity import CONFUSION_REASONS, near_reasons
 
 N = "̃"
 
 
 @pytest.mark.parametrize(
-    "canonical, decoded, expected",
+    "target, produced, expected",
     [
-        # the prototype's headline example: nasal vowel said as its oral cousin
-        ("ɔ" + N, "o", ["missing_nasality", "not_open_enough"]),
+        # the prototype's headline example: bonjour said [boʒuʁ]
+        ("ɔ" + N, "o", ["missing_nasality"]),
+        ("o", "ɔ" + N, ["extra_nasality"]),
         ("ɔ" + N, "ɔ", ["missing_nasality"]),
-        ("ɑ" + N, "a", ["missing_nasality", "too_far_forward"]),
-        ("ɔ", "ɔ" + N, ["extra_nasality"]),
+        ("ɑ" + N, "a", ["missing_nasality"]),
+        ("ɑ" + N, "ɔ" + N, ["over_rounded", "not_open_enough"]),
         ("y", "u", ["too_far_back"]),
         ("u", "y", ["too_far_forward"]),
-        ("y", "i", ["not_rounded"]),
-        ("i", "y", ["over_rounded"]),
-        ("ø", "e", ["not_rounded"]),
+        ("ə", "e", ["not_rounded"]),
         ("e", "ɛ", ["too_open"]),
-        ("ɛ", "e", ["not_open_enough"]),
+        ("ɥ", "w", ["too_far_back"]),
     ],
 )
-def test_near_vowels_name_the_features_that_differ(canonical, decoded, expected):
-    assert near_reasons(canonical, decoded) == expected
+def test_vowel_confusions_give_their_reasons(target, produced, expected):
+    assert near_reasons(target, produced) == expected
 
 
 @pytest.mark.parametrize(
-    "canonical, decoded, expected",
+    "target, produced, expected",
     [
         ("z", "s", ["missing_voicing"]),
         ("s", "z", ["extra_voicing"]),
-        ("ʒ", "ʃ", ["missing_voicing"]),
-        ("ʃ", "s", ["wrong_place"]),
-        ("t", "k", ["wrong_place"]),
-        ("d", "z", ["wrong_manner"]),
+        ("ʃ", "s", ["wrong_place", "not_rounded"]),
+        ("ʁ", "z", ["wrong_place"]),
+        ("ʁ", "r", ["wrong_place"]),
+        ("r", "ʁ", ["wrong_place"]),
     ],
 )
-def test_near_consonants_name_the_features_that_differ(canonical, decoded, expected):
-    assert near_reasons(canonical, decoded) == expected
+def test_consonant_confusions_give_their_reasons(target, produced, expected):
+    assert near_reasons(target, produced) == expected
 
 
 @pytest.mark.parametrize(
-    "canonical, decoded",
+    "target, produced",
     [
-        ("y", "a"),  # too many features apart
+        ("i", "a"),  # was near under the D64 formula
+        ("ʁ", "l"),  # common but distant: left out on purpose
+        ("ʁ", "ɡ"),
+        ("ʁ", "g"),
+        ("y", "a"),
         ("ɔ" + N, "i"),
-        ("ʁ", "l"),  # place and manner both differ
         ("p", "z"),
         ("a", "t"),  # vowel against consonant
-        ("t", "a"),
-        ("ɔ", "ɨ"),  # a phone the tables do not know
-        ("ɨ", "ɔ"),
+        ("ɔ", "ɨ"),  # a phone the table does not know
     ],
 )
-def test_far_substitutions_are_none(canonical, decoded):
-    assert near_reasons(canonical, decoded) is None
+def test_pairs_not_in_the_table_are_far(target, produced):
+    assert near_reasons(target, produced) is None
 
 
-def test_two_spellings_of_the_same_sound_are_near_without_reasons():
+def test_g_and_script_g_are_the_same_sound():
     assert near_reasons("g", "ɡ") == []
-    assert near_reasons("ɡ", "g") == []
+    assert near_reasons("k", "g") == ["extra_voicing"]
 
 
-def test_vowel_threshold_is_two_points_inclusive():
-    # /ɔ̃/ -> /o/: 0.5 * 2 (height) + 1 (nasality) = 2.0 -> still near
-    assert near_reasons("ɔ" + N, "o") is not None
-    # /ɔ̃/ -> /i/: height 1.5 + backness 1 + rounding 1 + nasality 1 = 4.5 -> far
-    assert near_reasons("ɔ" + N, "i") is None
+def test_nasal_vowels_given_precomposed_or_decomposed_match():
+    # no precomposed nasal IPA vowel exists, but NFC/NFD input must not matter
+    assert near_reasons(unicodedata.normalize("NFC", "ɛ" + N), "ɛ") == ["missing_nasality"]
 
 
-def test_nasal_vowels_given_decomposed_or_typed_the_same_way():
-    assert near_reasons("ɛ" + N, "ɛ") == ["missing_nasality"]
+def test_every_pair_is_listed_in_both_directions():
+    missing = [(a, b) for (a, b) in CONFUSION_REASONS if (b, a) not in CONFUSION_REASONS]
+    assert missing == []
+
+
+def test_every_reason_is_a_known_code():
+    codes = {v for k, v in vars(phone_similarity).items() if k.isupper() and isinstance(v, str)}
+    used = {r for reasons in CONFUSION_REASONS.values() for r in reasons}
+    assert used <= codes
+    assert all(CONFUSION_REASONS.values())  # no near pair without a reason
+
+
+def test_returned_list_is_a_copy():
+    near_reasons("y", "u").append("x")
+    assert near_reasons("y", "u") == ["too_far_back"]

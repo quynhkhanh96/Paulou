@@ -8,7 +8,7 @@ describe("TrackChanges", () => {
       <TrackChanges
         ops={[
           op("match", "l", "l"),
-          op("substitution", "ɔ̃", "o", "S_near", ["missing_nasality", "not_open_enough"]),
+          op("substitution", "ɔ̃", "o", "S_near", ["missing_nasality"]),
           op("substitution", "ʁ", "l"),
           op("deletion", "z", null),
           op("insertion", null, "t"),
@@ -19,7 +19,7 @@ describe("TrackChanges", () => {
     expect(items.map((li) => li.className)).toEqual(["tk tk-M", "tk tk-S_near", "tk tk-S", "tk tk-D", "tk tk-I"]);
     expect(items.map((li) => li.getAttribute("aria-label"))).toEqual([
       "l: correct",
-      "ɔ̃: close, heard o, missing nasality, mouth not open enough",
+      "ɔ̃: close, heard o, missing nasality",
       "ʁ: heard l instead",
       "z: missing",
       "t: extra sound",

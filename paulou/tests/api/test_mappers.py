@@ -64,7 +64,7 @@ def test_ops_are_classified_into_the_five_kinds():
         (AlignmentOp("deletion", "u", "a", None, None, None, None), ("D", [])),
         (AlignmentOp("insertion", "u", None, "z", 0.4, 60, 90), ("I", [])),
         (AlignmentOp("substitution", "u", "z", "s", 0.8, 0, 50), ("S_near", ["missing_voicing"])),
-        (AlignmentOp("substitution", "u", "ɔ" + n, "o", 0.8, 0, 50), ("S_near", ["missing_nasality", "not_open_enough"])),
+        (AlignmentOp("substitution", "u", "ɔ" + n, "o", 0.8, 0, 50), ("S_near", ["missing_nasality"])),
         (AlignmentOp("substitution", "u", "ʁ", "l", 0.8, 0, 50), ("S", [])),
         (AlignmentOp("substitution", "u", "a", "t", 0.8, 0, 50), ("S", [])),
     ]
@@ -79,5 +79,5 @@ def test_unit_result_dto_exposes_kind_and_reasons_but_never_confidence():
         ScoredAlignmentOp(AlignmentOp("match", "u", "b", "b", 0.9, 50, 90), 99),
     ]
     dto = to_unit_result_dto(UnitResult("u", 60, ops, "x"), calibrated=False)
-    assert [(o.kind, o.near_reasons) for o in dto.ops] == [("S_near", ["missing_nasality", "not_open_enough"]), ("M", [])]
+    assert [(o.kind, o.near_reasons) for o in dto.ops] == [("S_near", ["missing_nasality"]), ("M", [])]
     assert all("confidence" not in o for o in dto.model_dump()["ops"])

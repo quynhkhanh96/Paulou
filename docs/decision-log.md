@@ -446,6 +446,47 @@ replacing the two-branch GOP/free-decode architecture
 **Tradeoff accepted:** Needs the same network access as sentence preparation (edge-tts, D31); offline, the buttons show "audio unavailable". Not verified with the real voice: the sandbox that built it cannot reach edge-tts, so the buttons were tested only with a stub pipeline, and how each isolated word sounds is unchecked. Examples are read as single words, so a word like "y" or "eau" may be read oddly by the TTS.
 **Status:** Locked in for MVP; revisit with isolated-sound audio if Azure becomes a provider in use.
 
+### D63 — Learner result view replaces the phoneme strip: summary boxes plus per-word drill-down
+**Decision:** After an attempt, the web UI shows, top to bottom:
+- a counts-only score line, "x/y words correct · a/b sounds correct · n close";
+- two boxes, "Needs fixing" first and "You did well" second, each with at most 2 items (far errors before close ones); an empty box is hidden and the other takes the full width;
+- one chip per pronunciation unit (word, liaison group or elision group), marked correct / close / "N errors"; whole-sentence attempts group the chips by chunk;
+- clicking a chip opens a card in place with that unit's sound-by-sound track changes, its own "Needs fixing" and "Already good" boxes, "Hear the model" (the unit's reference TTS clip) and "Hear yourself" (the learner's own recording, cut to that unit, D65). The first unit with a problem opens by itself.
+
+Track changes keep the expected sounds as the spine and give each op kind its own colour and shape, so the kind is readable without colour: correct = plain teal; close = yellow highlight on the lower half with the heard sound above; replaced = orange-red highlight with a wavy underline and the heard sound above; missing = purple dashed frame with a strike-through; extra = blue "+x" pill above a ‸ caret between two expected sounds (consecutive extras merged into one pill). `Results.tsx` and `PhonemeStrip.tsx` are removed; the new view is `LearnerResults.tsx`, `TrackChanges.tsx`, `HearYourself.tsx`, with the logic in `learnerModel.ts` (pure functions) and the wording in `learnerText.tsx` (D66).
+**Rationale:** The phoneme strip showed every op but did not say what to fix first. Showing a short prioritised summary, then letting the learner open one word at a time, keeps the first screen short while keeping the full detail one click away. Praise is concrete (a hard sound done right, an all-correct word, a list of correct sounds) so it carries information; there is deliberately no comparison with earlier attempts.
+**Alternatives considered:** Keep the strip and add text under it (rejected: no prioritisation). Show numeric scores (rejected: D57, scores are not calibrated). A detailed expert/debug panel (edit-distance matrix, costs) was left out of the learner UI.
+**Tradeoff accepted:**
+- The "hard sounds" used for praise (ʁ y ø œ ɔ̃ ɑ̃ ɛ̃ œ̃ ʒ ɥ, `learnerData.ts`) are an assumption, not measured.
+- The audio-timeline view (D37 view 2) is still not built; this view is canonical-order only.
+- No dark mode for the new view.
+**Status:** Locked in for MVP. Resolves the Roadmap's open "color-coded visualization" item for the canonical view.
+
+### D64 — Close vs far substitutions decided by a short confusion table in the backend
+**Decision:** `stages/speech_assessment/phone_similarity.py::near_reasons(target, produced)` is a pure function that looks up the (target, produced) pair in `CONFUSION_REASONS`, a hand-written, directional table of close French confusions, each with its reason codes (primary first: `missing_nasality`, `not_rounded`, `too_open`, `wrong_place`, `extra_voicing`…). A pair in the table is close (`S_near`); any other pair, a vowel against a consonant, or an unknown phone is far (`S`). Inputs are normalised first (Unicode NFD; ASCII `g` → `ɡ` U+0261). `backend/api/mappers.py::classify_op` turns each op into `kind` (`M` / `S_near` / `S` / `D` / `I`) and `near_reasons`, both added to the op DTO; the frontend only maps codes to sentences (D66). `confidence` stays out of the API (D14, D54).
+**Rationale:** "Close" is a teaching judgment: the learner is one fix away. An explicit list makes each judgment visible and fixable on its own line. Deciding it in the backend keeps it tested in pytest and keeps the display components free of phonetics.
+**Alternatives considered:**
+- A feature-distance formula (vowels: height, backness, rounding, nasality; consonants: place, manner, voicing; close under a threshold). It was the first implementation and was replaced before release: its weights and thresholds had no source, and it called 57 of 120 vowel pairs close, including i→a, while calling ʁ→r far.
+- Computing it in the frontend (rejected: the display must not do phonetics).
+- Listing every pair exhaustively (rejected for MVP: a short list with "far" as default covers the cases that matter).
+**Tradeoff accepted:**
+- The table is not validated on learner data, and is missing pairs that may be common (ʁ→ɣ, i/e, u/o, b/v…); missing pairs count as far.
+- Common but distant confusions (ʁ→l, ʁ→ɡ: place and manner both differ) are left out on purpose, so they show as far without an explanation; explaining them needs a third level ("common but not close") post-MVP.
+- `S_near` is still shown in the UI as "close", which matches this table only because the distant pairs were removed.
+**Status:** Locked in for MVP; extend and validate post-MVP (Roadmap).
+
+### D65 — "Hear yourself" is cut in the browser with Web Audio
+**Decision:** The frontend keeps the recorded blob, decodes it with `AudioContext.decodeAudioData`, and plays the slice from the unit's earliest to latest op timestamp, padded by 80 ms each side, through an `AudioBufferSourceNode`. A shared `audioFocus.ts` makes sure only one clip (model or own voice) plays at a time. The button is disabled when none of the unit's ops has a time (all deletions).
+**Rationale:** Seeking an `<audio>` element on a MediaRecorder webm file is unreliable (no seek index), and sending the recording back to the server to cut it would add a round trip for audio the browser already has.
+**Tradeoff accepted:** Depends on the recognizer timestamps (D37) lining up with the uploaded audio; verified only with the stub pipeline, not with the real model, and not in Safari or Firefox.
+**Status:** Locked in for MVP.
+
+### D66 — Feedback sentences are generated in the frontend, in English, from the ops
+**Decision:** All learner-facing sentences in the result view ("/ɔ̃/ is close, heard as /o/: missing nasality", praise items, hints) are built in `frontend/src/learnerText.tsx` from op kinds and reason codes; every UI string of that view lives in that one file. The backend `feedback_text` (D41) stays in the API response but this view does not display it.
+**Rationale:** The wording needs context the backend sentence does not have (which word, what to fix first, what was done well), and keeping all strings in one file makes a later rewrite or translation easy.
+**Tradeoff accepted:** Partly supersedes D57: the "placeholder wording" note next to `feedback_text` was removed because that text is no longer shown. Two sources of feedback text now exist (backend `feedback_text`, frontend `learnerText.tsx`) until `feedback_text` is removed or reused.
+**Status:** Locked in for MVP.
+
 ---
 
 ## Engineering / codebase architecture

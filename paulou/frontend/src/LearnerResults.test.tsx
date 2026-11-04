@@ -16,7 +16,7 @@ const unitResult = (unit_id: string, ops: ReturnType<typeof op>[]) => ({ unit_id
 
 const BONJOUR = unitResult("c0_unit_0", [
   op("match", "b", "b"),
-  op("substitution", "ɔ̃", "o", "S_near", ["missing_nasality", "not_open_enough"], 50),
+  op("substitution", "ɔ̃", "o", "S_near", ["missing_nasality"], 50),
   op("match", "ʒ", "ʒ", "M", [], 100),
   op("deletion", "u", null),
   op("substitution", "ʁ", "l", "S", [], 150),
