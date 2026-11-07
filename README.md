@@ -4,7 +4,7 @@
 
 A French pronunciation practice app: users input any sentence they want to practice — not just pre-scripted content — and the app breaks it down into rhythmic chunks, then into word- and phoneme-level units, with liaison-aware guidance and speech assessment feedback at each level.
 
-**Status: working local prototype.** You can type a sentence, listen to a reference voice (normal or slow), record yourself, and see sound by sound what was said correctly, replaced, added or missing. Scores are not meaningful yet: the calibration statistics from a native corpus do not exist, so the app shows no numeric score (see [Current status](#current-status)).
+**Status: working local prototype.** You can type a sentence, listen to a reference voice (normal or slow), record yourself, and see what to fix first, word by word and sound by sound. The app shows counts (words and sounds correct) rather than a numeric score: calibration statistics from a native corpus do not exist yet (see [Current status](#current-status)).
 
 ---
 
@@ -37,8 +37,10 @@ Then open **http://localhost:8080** (use `localhost`: browsers only allow the mi
 How a session goes:
 
 1. Type or paste a French sentence. Preparing it (splitting into rhythm groups and recording a reference voice) takes roughly 3.5–16 seconds, longer for longer sentences.
-2. Pick a chunk and listen to it, at normal speed or slowly. Pick one unit (a word, a liaison pair, an elided clitic) to drill it alone.
-3. Record. The result is the expected sounds in order, each marked *said correctly*, *said as another sound*, *extra sound* or *missing*, plus a written comment. Scoring takes well under a second per chunk.
+2. Each chunk is its own tab. Listen to it, at normal speed or slowly, and pick one unit (a word, a liaison pair, an elided clitic) to drill it alone. The last tab, **Whole sentence**, lets you say everything in one go (D59).
+3. Record. The result starts with a count ("x/y words correct · a/b sounds correct · n close"), then **Needs fixing** and **You did well** (two items each at most). Below, one chip per word or liaison pair; click one to see its sounds one by one (correct, close, replaced, missing, extra), with what is off and two buttons: **Hear the model** and **Hear yourself** (your own recording, cut to that word) (D63-D65). Scoring takes well under a second per chunk.
+
+The **Pronunciation guide** tab (D60) explains each French sound with examples you can listen to (D62), plus liaison, elision and rhythm; it works without preparing a sentence.
 
 ---
 
@@ -73,10 +75,10 @@ User input (sentence)
 | Elision detection | [`stages/chunk_analyzer/elision/`](stages/chunk_analyzer/elision/) | Closed-list lookup for elided clitics (l', d', j', ...) — distinct from liaison, D28 |
 | Unit assembly | [`stages/chunk_analyzer/assembly/`](stages/chunk_analyzer/assembly/) | Groups words into `single`, `liaison_group`, or `elision_group` `PronunciationUnit`s |
 | TTS | [`stages/tts/`](stages/tts/) | Sentence-level synthesis with word-boundary timestamps — two swappable providers (Azure Neural, edge-tts, D31; edge-tts is the default), caching (D7), span location (`timing_alignment.py`, D48) and chunk/unit audio slicing (D5) |
-| Speech Assessment | [`stages/speech_assessment/`](stages/speech_assessment/) | One free-phone-recognition pass per recording, 3-way Levenshtein alignment against the canonical phonemes (`align.py`, D38), per-op scoring (`scoring.py`, D39), per-unit merge (`merge.py`, D40), feedback text (`feedback.py`, D41), chunk orchestration (`speech_assessment.py::score_chunk`, D42). Real recognizers in `free_decode/` (`wav2vec2_cnam` is the default, D45/D47) |
+| Speech Assessment | [`stages/speech_assessment/`](stages/speech_assessment/) | One free-phone-recognition pass per recording, 3-way Levenshtein alignment against the canonical phonemes (`align.py`, D38), per-op scoring (`scoring.py`, D39), per-unit merge (`merge.py`, D40), feedback text (`feedback.py`, D41), chunk orchestration (`speech_assessment.py::score_chunk`, D42), close vs far substitutions (`phone_similarity.py`, D64). Real recognizers in `free_decode/` (`wav2vec2_cnam` is the default, D45/D47) |
 | Pipeline | [`pipeline.py`](pipeline.py) | `PaulouPipeline`: `analyze_sentence`, `synthesize_reference`, `score_attempt`, `slice_reference` (D48); `core/config.py::PipelineConfig` selects implementations |
 | Backend | [`backend/api/`](backend/api/) | FastAPI app that only calls `PaulouPipeline` (D13): `/api/health`, `/api/sentences`, `/api/sentences/{id}/audio`, `/api/attempts` (D54). Scoring is synchronous (D52); the speech model is loaded and warmed at startup |
-| Frontend | [`frontend/`](frontend/) | Vite + React + TypeScript practice UI (D58). Shows the expected sounds in order, colour- and symbol-coded by outcome |
+| Frontend | [`frontend/`](frontend/) | Vite + React + TypeScript practice UI (D58): chunk tabs and a whole-sentence tab (D59, D61), pronunciation guide (D60, D62), learner result view with per-word track changes (D63). All result wording is generated in `learnerText.tsx` (D66) |
 
 Every model-backed or externally-dependent stage (parser, G2P source, TTS provider, free-phone recognizer) is defined as a `Protocol` interface and resolved through a small registry, so alternative implementations can be swapped via config without touching the pipeline or other stages — this is what lets `stages/tts/azure_tts.py` and `edge_tts_provider.py` coexist (D31). The swappable interface for Speech Assessment is `FreePhoneRecognizer`: `decode(audio) -> tuple[list[str], list[float], list[tuple[int, int]]]` (phones, per-position confidence, per-position time boundaries; D37). Pure, deterministic logic (liaison rules, unit assembly, alignment, merging, calibration, feedback templates) is kept as plain functions — no abstraction layer, since there is no real expectation of swapping these.
 
@@ -98,7 +100,9 @@ The core pipeline (`core/`, `stages/`, `pipeline.py`) is plain Python with no de
 | Scoring runs synchronously inside the request | Measured on one development machine (Windows, 16 logical CPUs, CPU only): 0.075–0.114 s median per chunk and at most 0.63 s (p90) for a 7 s sentence, far below the 1–2 s threshold. Sentence preparation is the slow step (up to about 16 s), so the UI shows a loading state | D52, [latency results](experiments/results/latency/RESULTS.md) |
 | Local single-user web app, no auth, no database | Progress tracking is deferred; prepared sentences live in memory and the parse and TTS caches live on disk | D53 |
 | Browser recordings are uploaded in their native format and converted to WAV with ffmpeg | `MediaRecorder` produces webm/opus in Chromium, which the recognizer's audio reader cannot open; checked on a real recording | D56 |
-| No numeric scores until real calibration statistics exist | With placeholder statistics the numbers would look meaningful and not be; the UI shows the alignment ops and written feedback, and says that the overall wording is provisional | D57 |
+| No numeric scores until real calibration statistics exist | With placeholder statistics the numbers would look meaningful and not be; the UI shows counts and the alignment ops instead | D57 |
+| Result view: what to fix first, then word by word | A short prioritised summary (two items to fix, two done well) keeps the first screen readable; each word opens its own sound-by-sound detail with the model's clip and the learner's own | D63, D65 |
+| "Close" vs "replaced" sounds decided by a short confusion table | A hand-written list of close French confusions with the reason for each (e.g. /ɔ̃/ heard as /o/: missing nasality); any pair not in the list counts as replaced. Explicit and reviewable line by line; not yet validated on learner data | D64 |
 
 ---
 
@@ -115,26 +119,29 @@ The core pipeline (`core/`, `stages/`, `pipeline.py`) is plain Python with no de
 - **Pipeline orchestration** (D48): `pipeline.py::PaulouPipeline`, `core/config.py::PipelineConfig`, `stages/tts/timing_alignment.py::locate_spans`. edge-tts hang fix and timing offset (D49); command-line runner (`experiments/runners/pipeline_cli.py`, D50); latency benchmark (D52).
 - **Parse cache** (D55): `stages/parsing/caching.py::CachingSentenceParser`, enabled in `PaulouPipeline` through `parser_cache_dir`.
 - **Web app** (D53–D58): `backend/api/` (FastAPI; settings, schemas, mappers, audio conversion, in-memory sentence store, health/sentences/attempts routers), `frontend/` (Vite + React + TypeScript), `docker-compose.yml`, `Dockerfile.backend`.
+- **Practice UI additions** (D59–D66): whole-sentence tab and real tabs, pronunciation guide with example audio (`backend/api/routers/guide.py`), learner result view (`LearnerResults.tsx`, `TrackChanges.tsx`, `HearYourself.tsx`, `learnerModel.ts`, `learnerText.tsx`), close/far classification (`stages/speech_assessment/phone_similarity.py`).
 - **Tests**: fast unit suite (`tests/unit`), backend API suite with a stub pipeline (`tests/api`, includes a real browser-recorded webm fixture), frontend suite (Vitest + Testing Library) and a Chromium smoke test (`frontend/e2e/smoke.mjs`), model tests that need the real spaCy model, and contract tests that need real Gemini/Azure credentials — see `tests/README.md`. The edge-tts contract test needs no credential but is run separately.
-<!-- TODO: fill in test counts from a fresh run of every suite -->
+- Last full run of the fast suites (D63–D66 work): `tests/unit` + `tests/api` 299 passed, 7 skipped; frontend 84 passed; Chromium smoke test 9/9. The model and contract suites were not re-run then.
 
 **Not done, and what it means for users:**
-- **No calibration statistics yet** (D11, D24). `calibrate_score` takes a table of per-phone statistics from a native French corpus, which has not been produced. Until then the CLI and the backend use placeholder statistics, and the API returns no numeric score (D57). The structure of the result (which sounds matched, were replaced, added or missing) is meaningful; the overall wording ("good effort", "needs work") is not. Supply a real table with `PAULOU_PHONE_STATS_PATH` and the same fields fill in without code changes.
+- **No calibration statistics yet** (D11, D24), now planned after the MVP (D70). `calibrate_score` takes a table of per-phone statistics from a native French corpus, which has not been produced. Until then the CLI and the backend use placeholder statistics internally, and the API returns no numeric score (D57). Nothing the learner sees depends on them: the result view uses which sounds matched, were close, replaced, added or missing. Supply a real table with `PAULOU_PHONE_STATS_PATH` and the score fields fill in without code changes.
 - **Findings from the first real runs** are still open (see the [Roadmap](docs/roadmap.md)): liaisons inside a chunk that the rule engine does not predict, and optional schwa counted as missing.
-- **No progress tracking, accounts or deployment.** One user, one process.
+- **No progress tracking, accounts or public deployment yet.** One user, one process.
 - **No audio-timeline view** of the recording; only the canonical view (D37, D58).
 - The Docker setup has been built and run by the author on one machine; recordings were verified only in Chromium (with a fake microphone) — Safari and Firefox are untested.
 
 **Known data/tooling gaps:**
 - `pipeline.py` wires Lexique400 (D30) through `stage_kwargs` (D48); the plain `LexiqueEspeakG2P` constructor still loads the small hand-written fixture. The 33 MB file is not committed (git-ignored); download it separately — see SETUP.md.
 
-**Next up:** the native-corpus calibration run (MVP-blocking), the schwa decision and the in-chunk liaison diagnosis before user testing, collecting real learner recordings. The canonicalizer-bias diagnostic (D10) is done: see D47 for the result and its caveat.
+**Next up** (MVP, D67–D70; details in the [Roadmap](docs/roadmap.md)): replace the Gemini parser with a rule-based chunker that never splits a liaison (D67), so no API key is needed; normalize numbers, abbreviations and apostrophes (D68); try a local TTS (Kokoro) with word timings, otherwise rate-limit edge-tts (D69); download Lexique400 automatically in Docker; re-measure latency on small hardware and publish a public link (D70); then the schwa decision and the in-chunk liaison diagnosis. The canonicalizer-bias diagnostic (D10) is done: see D47 for the result and its caveat.
 
 **Known limitations (by design, not oversight):**
 - Liaison detection is rule-based (`stages/chunk_analyzer/liaison/rule_engine.py`) and is expected to be incomplete on free-form input with rare vocabulary, proper nouns or borrowed words (D4).
 - The POS tagger (spaCy `fr_core_news_sm`) mistags "content" (adjective, "happy") as `ADV`, so the "très/trop + ADJ" liaison pattern misses it.
 - A liaison that crosses a chunk boundary (e.g. "enfants‿ont") is not modeled: a learner who links it correctly is shown a false "extra sound" (D51). The UI says so when an extra sound appears.
 - Optional schwa is counted as missing, and the recognizer can hear an extra consonant after a nasal vowel (D47). The UI explains both next to the result.
+- "Close" sounds come from a short hand-written list of confusions (D64). Pairs not in it, including common but distant ones like /ʁ/ said as /l/, show as replaced without an explanation of what is off.
+- "Hear yourself" cuts your recording using the recognizer's timestamps; this has only been checked with a stub pipeline (D65).
 - Sentences containing digits or symbols are rejected, because the voice reads them differently from how they are written; write them out as words.
 - The reference voice comes from edge-tts, an unofficial service that can change or stop working without notice (D31). Clip boundaries use a fixed 50 ms timing offset that was checked by ear on one sentence (D49).
 - French support in the underlying acoustic models generally lags English; the default recognizer (`Cnam-LMSSC/wav2vec2-french-phonemizer`) is community-maintained.

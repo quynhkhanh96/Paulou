@@ -487,6 +487,38 @@ Track changes keep the expected sounds as the spine and give each op kind its ow
 **Tradeoff accepted:** Partly supersedes D57: the "placeholder wording" note next to `feedback_text` was removed because that text is no longer shown. Two sources of feedback text now exist (backend `feedback_text`, frontend `learnerText.tsx`) until `feedback_text` is removed or reused.
 **Status:** Locked in for MVP.
 
+### D67 — [REVERSAL of D27] Rule-based chunker replaces the Gemini sentence parser as the default
+**Decision:** The default sentence parser becomes a deterministic, rule-based chunker. Order of work: normalize the text (D68), tag POS with spaCy (D26), compute liaison and elision decisions over the WHOLE sentence, then cut chunks. Chunking heuristic: a function word (determiner, preposition, clitic pronoun) joins the content word after it; cut at punctuation, and after a content word once the group is long enough; cap the group length. Hard rule: a chunk boundary never falls inside a liaison or an elision. `GeminiSentenceParser` stays registered as an alternative (D12) but is no longer the default, so no API key is needed.
+**Rationale:**
+- Gemini gives different chunks for the same sentence on different runs (D50); the parse cache (D55) only hides this for repeated sentences.
+- Gemini sometimes cuts a chunk inside a liaison (D51), which makes a correct liaison show as an extra sound.
+- The Gemini call dominates sentence preparation (`analyze_sentence` 2.6-13.4 s median, D52).
+- An API key makes local setup harder for collaborators and adds a secret to a public deployment.
+**Alternatives considered:** Keep Gemini with temperature 0 and the cache (rejected: still slow on first use, still needs a key, still free to cut inside a liaison). An ML prosodic-phrasing model (rejected for MVP: heavier, nothing ready for French found).
+**Tradeoff accepted:** Heuristic groups follow syntax, not real prosody, so they match D2's "groupe rythmique" only approximately. There is no regression set: the chunker is checked by hand on a few sentences, so a rule that fixes one case may break another. D51 (liaison across chunks) should mostly disappear with the hard rule; confirm by hand once built.
+**Status:** Agreed, not implemented.
+
+### D68 — Text normalization before parsing; the learner practises the normalized text
+**Decision:** A pure normalization step runs before chunking: apostrophe variants (’ ‘ ʼ ´ `) become `'` (this fixes elision detection, which only recognizes U+0027); numbers are written out with `num2words` (`lang="fr"`); a few hand-written rules cover times ("14 h") and common abbreviations (M., Mme, etc.). The normalized sentence is what the UI shows and what the learner practises.
+**Rationale:** The liaison rules, elision lookup and G2P all work on written words; "21 ans" must reach them as "vingt et un ans" for the liaison in "vingt‿et" / "un‿an" to be considered at all. The learner has to see what they are expected to say.
+**Alternatives considered:** `spokenform` (Apache-2.0, covers dates, times, currencies and abbreviations for French) — not chosen for now: alpha status (0.4.5, Sept 2026), one maintainer, extra unrelated dependencies; revisit if the hand-written rules prove too thin. Letting espeak normalize numbers inside G2P (rejected: the liaison engine and unit assembly would never see the words).
+**Tradeoff accepted:** Coverage is partial (dates, currencies, ordinals in context, rare abbreviations); checked by hand on a few inputs only.
+**Status:** Agreed, not implemented. Showing the normalized text instead of the original is a proposal not yet explicitly confirmed.
+
+### D69 — [TENTATIVE] Local TTS: try Kokoro-82M with word timings computed from its predicted durations; rate-limit edge-tts otherwise
+**Decision:** Add `KokoroTTSProvider` (registry key to be chosen, D31 pattern) using Kokoro-82M (Apache-2.0, runs on CPU, one French voice `ff_siwis`). The `kokoro` package (0.7.16) returns word timestamps only for English, but returns per-phoneme predicted durations (`pred_dur`) for every language; word timings are computed from those at the spaces of the phoneme string. Kokoro becomes the default only if a local check confirms the timings line up with the words. Whatever the TTS, the backend gets a rate limit on sentence preparation.
+**Rationale:** edge-tts is an unofficial protocol that can break or block (D31, D49); a local model removes the network dependency and gives timings from the model itself rather than estimated ones (D49 measured 15-70 ms errors).
+**Alternatives considered:** Piper (rejected: no documented way to get word timings; the maintained `piper1-gpl` is GPL, which may conflict with FSL, D18). Azure (rejected: needs a key, D31). Timings from running wav2vec2 on the TTS audio (fallback only: tens of ms accuracy).
+**Tradeoff accepted:** One French voice, graded B- by its authors, trained on under 11 h of data. Kokoro phonemizes with espeak; if espeak merges two words (e.g. across a liaison), that word boundary is lost; this is the main thing the local check must look at. Not testable in the sandbox (no access to Hugging Face).
+**Status:** Tentative; decide after the local check.
+
+### D70 — MVP priorities: technical readiness first; quality heuristics accepted without a regression set; calibration moved post-MVP
+**Decision:** For MVP, work goes first to response time, ease of local setup and deployability; answer quality (chunking, liaison, schwa, normalization) uses the lightest workable rule and is checked by hand on a few examples. Two release targets: (1) a public link that opens the app with nothing to install (HTTPS is required for the microphone; rate limiting; latency re-measured on the target hardware, e.g. 2 vCPU, before choosing a host); (2) `git clone` + `docker compose up` for collaborators, with Lexique400 and models downloaded automatically and no API key. Native-corpus calibration (`phone_stats`, D11/D24) moves to post-MVP. The startup warm-up already exists (`backend/api/dependencies.py::warm_up()`, D52).
+**Rationale:** Calibration changes nothing the learner sees: scores are hidden (D57) and the result view uses op kinds and counts only (D63). The quality items need a labelled test set to be judged properly; building one is real work that does not block a first release.
+**Alternatives considered:** Build a golden regression set (sentences with expected chunks, units, liaisons and phonemes) before any rule change (deferred to post-MVP, see Roadmap). Keep calibration MVP-blocking (rejected: no visible effect).
+**Tradeoff accepted:** Rule changes made without a regression set may fix one case and break another unnoticed. The backend keeps filling placeholder statistics internally (D50) so that `calibrate_score` does not fail; removing them, and the always-null `score` fields of the API, goes with the calibration work post-MVP. Free Docker hosting is limited (e.g. Hugging Face Spaces now requires a paid plan to create a Docker Space; free CPU hardware sleeps after about 48 h idle).
+**Status:** Locked in for MVP. Supersedes the Roadmap's "Native-corpus calibration" MVP-blocking item and build-order step 7.
+
 ---
 
 ## Engineering / codebase architecture
