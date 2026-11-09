@@ -15,7 +15,9 @@ space without pulling in torch or google-genai). A key that is neither
 registered nor listed raises the registry's own KeyError.
 
 Operations:
-- `analyze_sentence(text)`: parser -> Chunk Analyzer per chunk -> Sentence.
+- `analyze_sentence(text)`: text normalization (D68) -> parser -> Chunk
+  Analyzer per chunk -> Sentence. `Sentence.text` is the NORMALIZED text:
+  the learner practises it and the TTS reads it (D68).
   Unit ids are re-namespaced `c{i}_{local_id}` so they are unique across
   the sentence (`assemble_units` numbers from 0 in every chunk). Chunks
   that yield no units (punctuation only) are dropped: nothing can be
@@ -41,6 +43,7 @@ from core.models import Chunk, PronunciationUnit, ReferenceAudio, Sentence, Unit
 from core.registry import build, is_registered
 from stages.chunk_analyzer.chunk_analyzer import analyze_chunk
 from stages.parsing.caching import CachingSentenceParser
+from stages.parsing.text_normalization import normalize_for_speech
 from stages.speech_assessment.calibration import PhoneStats
 from stages.speech_assessment.speech_assessment import score_chunk
 from stages.tts.audio_slicing import slice_audio
@@ -50,6 +53,7 @@ from stages.tts.timing_alignment import locate_spans
 AUDIO_FORMAT = "mp3"
 
 _STAGE_MODULES: dict[tuple[str, str], str] = {
+    ("parser", "rule_based"): "stages.parsing.rule_based_parser",
     ("parser", "gemini"): "stages.parsing.gemini_parser",
     ("g2p", "lexique_espeak"): "stages.chunk_analyzer.g2p.lexique_espeak",
     ("tts", "edge_tts"): "stages.tts.edge_tts_provider",
@@ -118,6 +122,7 @@ class PaulouPipeline:
         return _build_stage("free_decoder", self.config.free_decoder, **self._kwargs("free_decoder"))
 
     def analyze_sentence(self, text: str) -> Sentence:
+        text = normalize_for_speech(text)  # D68
         chunks: list[Chunk] = []
         for chunk_text in self.parser.parse(text):
             units = analyze_chunk(chunk_text, self.g2p)

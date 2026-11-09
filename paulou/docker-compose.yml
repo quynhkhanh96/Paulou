@@ -1,7 +1,7 @@
 # Local, single-user MVP (Decision Log D53). From the package directory:
 #   docker compose up --build        then open http://localhost:8080
-# Needs: data/Lexique400.tsv (git-ignored, D30) and GEMINI_API_KEY in ../.env
-# (repo root, same file the CLI uses). First start downloads the wav2vec2 model
+# Needs: data/Lexique400.tsv (git-ignored, D30). No API key since D67 (rule-based
+# parser); ../.env is only read if the Gemini parser is configured. First start downloads the wav2vec2 model
 # into the hf-cache volume and loads it (~12 s, D52): the UI shows
 # "Loading the speech model" until /api/health says ready.
 services:

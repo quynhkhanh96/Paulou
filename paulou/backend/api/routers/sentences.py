@@ -32,8 +32,8 @@ def _prepare(state: AppState, text: str) -> PreparedSentence:
         raise api_error(
             502,
             "preparation_failed",
-            "Could not analyze the sentence. Check the server log (parser API key, "
-            "network, Lexique400 file).",
+            "Could not analyze the sentence. Check the server log (Lexique400 file, "
+            "spaCy model; parser API key if the Gemini parser is configured).",
         )
     if not sentence.chunks:
         raise api_error(422, "no_content", "There is nothing to practice in this text.")

@@ -94,3 +94,10 @@ def test_single_word_chunk(g2p):
     assert len(units) == 1
     assert units[0].type == "single"
     assert units[0].words == ["bonjour"]
+
+
+def test_lone_hyphen_token_is_not_a_word(g2p):
+    # spaCy splits "quarante-cinq" here and tags the "-" as a word; it must
+    # not reach G2P or become a unit.
+    units = analyze_chunk("à sept heures quarante-cinq", g2p)
+    assert all(any(ch.isalnum() for ch in w) for u in units for w in u.words)

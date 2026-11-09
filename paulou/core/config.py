@@ -13,6 +13,10 @@ ways, both discussed in chat:
   from real data (D47's canonicalizer-bias comparison against
   "wav2vec2_bofenghuang"), not arbitrarily.
 
+`parser` defaults to "rule_based" (D67), not the LLM parser the
+Architecture Spec describes ("gemini", D27): same sentence, same chunks, no
+network call and no API key.
+
 `tts` defaults to "edge_tts" (D31), not "azure_neural" as the Architecture
 Spec's original example showed -- no Azure Speech API key is currently
 provisioned (same reasoning as D43's TTS-for-diagnostics decision), and
@@ -24,7 +28,8 @@ from dataclasses import dataclass
 
 @dataclass
 class PipelineConfig:
-    parser: str = "gemini"  # D27 -- only implementation; needs GEMINI_API_KEY
+    parser: str = "rule_based"  # D67 (reverses D27) -- deterministic, no API key;
+    # "gemini" stays registered as an alternative (needs GEMINI_API_KEY)
     g2p: str = "lexique_espeak"  # D30 -- only implementation
     tts: str = "edge_tts"  # D31 -- 2 registered ("edge_tts", "azure_neural");
     # edge_tts needs no API key, azure_neural needs AZURE_SPEECH_KEY/REGION

@@ -64,3 +64,19 @@ def test_pipeline_factory_names_the_missing_lexicon(tmp_path):
     settings = Settings(lexique_path=tmp_path / "missing.tsv", cache_dir=tmp_path / "cache")
     with pytest.raises(RuntimeError, match="PAULOU_LEXIQUE_PATH"):
         build_pipeline(settings, {})
+
+
+def test_pipeline_factory_does_not_cache_the_rule_based_parser(tmp_path, monkeypatch):
+    # D67/D55: only the LLM parser is cached; the rule-based default is
+    # deterministic, and a cache would keep stale chunks after a rule change.
+    import stages.chunk_analyzer.g2p.lexique_espeak as lexique_espeak
+
+    lexicon = tmp_path / "lexique.tsv"
+    lexicon.write_text("")
+    monkeypatch.setattr(lexique_espeak, "load_lexique400", lambda path: {})
+    settings = Settings(lexique_path=lexicon, cache_dir=tmp_path / "cache")
+
+    pipe = build_pipeline(settings, {})
+
+    assert pipe.config.parser == "rule_based"
+    assert pipe.parser_cache_dir is None

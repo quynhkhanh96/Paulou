@@ -1,8 +1,9 @@
 """Manual end-to-end CLI for PaulouPipeline, with REAL components.
 
-Not part of CI (Decision Log D16): it needs GEMINI_API_KEY, network access
-to the TTS service, the spaCy French model, Lexique400.tsv and a downloaded
-free-phone recognizer -- exactly what the stub-based tests/unit/
+Not part of CI (Decision Log D16): it needs network access to the TTS
+service (and GEMINI_API_KEY only if the Gemini parser is configured, D67),
+the spaCy French model, Lexique400.tsv and a downloaded free-phone
+recognizer -- exactly what the stub-based tests/unit/
 test_pipeline.py deliberately avoids. Run it to see the whole pipeline work
 (or fail) on a real sentence.
 

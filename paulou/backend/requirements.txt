@@ -12,6 +12,7 @@ soundfile>=0.12
 numpy>=1.26
 transformers>=4.40
 spacy>=3.7
+num2words>=0.5.14  # D68 text normalization
 google-genai>=2.22.0
 edge-tts>=7.3.1
 python-dotenv>=1.0

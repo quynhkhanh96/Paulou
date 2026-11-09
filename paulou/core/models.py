@@ -253,7 +253,9 @@ class Sentence:
     """A full input sentence and its chunks, in order.
 
     Same deviations from the Architecture Spec as `Chunk` (no `id`).
-    `text` is the sentence exactly as the user gave it; the parser's own
+    `text` is the sentence after text normalization (D68: numbers written
+    out, apostrophes unified), which is what the learner practises; the
+    parser's own
     contract (tests/contract/test_chunking_invariants.py) guarantees the
     chunk texts concatenate back to it modulo whitespace, but this model
     does not re-check that.

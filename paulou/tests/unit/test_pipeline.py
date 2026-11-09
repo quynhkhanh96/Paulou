@@ -103,6 +103,24 @@ def test_analyze_sentence_namespaces_unit_ids_across_chunks(monkeypatch):
     assert sentence.text == "Bonjour le monde"
 
 
+def test_analyze_sentence_normalizes_text_before_parsing(monkeypatch):
+    # D68: the parser, the chunk analyzer and Sentence.text all see the
+    # normalized text (numbers written out, apostrophe U+2019 -> U+0027).
+    seen = []
+    _register_stubs()
+    pipe = PaulouPipeline(CONFIG, STATS)
+    monkeypatch.setattr(pipe.parser, "parse", lambda text: seen.append(text) or [text])
+    monkeypatch.setattr(
+        pipeline_module, "analyze_chunk", lambda text, g2p: [_unit("unit_0", text.split(), ["a"])]
+    )
+
+    sentence = pipe.analyze_sentence("J\u2019ai  21 ans.")
+
+    assert seen == ["J'ai vingt et un ans."]
+    assert sentence.text == "J'ai vingt et un ans."
+    assert sentence.chunks[0].text == "J'ai vingt et un ans."
+
+
 def test_analyze_sentence_drops_chunks_without_units_and_renumbers(monkeypatch):
     _register_stubs(parse_result=("...", "salut"))
     monkeypatch.setattr(

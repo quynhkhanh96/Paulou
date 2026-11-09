@@ -28,10 +28,15 @@ def build_pipeline(settings: Settings, phone_stats: dict[str, PhoneStats]):
     if config.tts == "edge_tts":
         stage_kwargs["tts"] = {"timing_offset_ms": settings.timing_offset_ms}  # D49
 
+    # D52/D55: only the stochastic, slow LLM parser is cached. The rule-based
+    # parser (D67) is deterministic and fast; caching it would only keep
+    # stale chunks after a rule change.
+    parser_cache_dir = str(settings.parser_cache_dir) if config.parser == "gemini" else None
+
     return PaulouPipeline(
         config,
         phone_stats,
         tts_cache_dir=str(settings.tts_cache_dir),  # D7
-        parser_cache_dir=str(settings.parser_cache_dir),  # D52/D55
+        parser_cache_dir=parser_cache_dir,
         stage_kwargs=stage_kwargs,
     )

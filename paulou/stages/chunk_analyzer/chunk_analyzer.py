@@ -16,7 +16,9 @@ Flow (see the flow diagram discussed when this was designed):
       -> list[PronunciationUnit]
 
 Known assumptions / flagged gaps, not fully resolved:
-- PUNCT tokens are silently dropped, not represented in the output at all.
+- PUNCT tokens, and any token with no letter or digit (a lone "-" that
+  spaCy split out of a hyphenated word and tagged as a word), are silently
+  dropped, not represented in the output at all.
   If a chunk carries meaningful punctuation (e.g. from how the sentence
   parser draws chunk boundaries), it's lost here with no trace.
 - G2P is called for every word, including recognized elided clitics whose
@@ -53,7 +55,14 @@ def analyze_chunk(chunk: str, g2p: G2PProvider) -> list[PronunciationUnit]:
     this orchestrator itself isn't a registered stage).
     """
     tagged = tag_sentence(chunk)
-    words_with_pos = [(word, pos) for word, pos in tagged if pos != "PUNCT"]
+    # A token with no letter or digit is dropped like PUNCT: spaCy splits some
+    # hyphenated words ("quarante-cinq" -> "quarante", "-", "cinq") and may
+    # tag the lone "-" as NOUN/NUM, which would reach G2P as a word.
+    words_with_pos = [
+        (word, pos)
+        for word, pos in tagged
+        if pos != "PUNCT" and any(ch.isalnum() for ch in word)
+    ]
 
     if not words_with_pos:
         return []

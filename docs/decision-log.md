@@ -489,21 +489,42 @@ Track changes keep the expected sounds as the spine and give each op kind its ow
 
 ### D67 — [REVERSAL of D27] Rule-based chunker replaces the Gemini sentence parser as the default
 **Decision:** The default sentence parser becomes a deterministic, rule-based chunker. Order of work: normalize the text (D68), tag POS with spaCy (D26), compute liaison and elision decisions over the WHOLE sentence, then cut chunks. Chunking heuristic: a function word (determiner, preposition, clitic pronoun) joins the content word after it; cut at punctuation, and after a content word once the group is long enough; cap the group length. Hard rule: a chunk boundary never falls inside a liaison or an elision. `GeminiSentenceParser` stays registered as an alternative (D12) but is no longer the default, so no API key is needed.
+
+Implementation (v4_2): `stages/parsing/rule_chunker.py` (pure `chunk_tokens`) + `stages/parsing/rule_based_parser.py` (`RuleBasedSentenceParser`, registered `("parser", "rule_based")`; chunk texts are cut out of the input string). The sentence is split at punctuation first, and liaison decisions are computed per punctuation segment (no liaison across punctuation); elision is read from the spelling (a word ending in `'`). Each segment is then cut in one left-to-right pass, deciding each gap between two words:
+- Hard rules — no cut: inside an obligatory liaison; inside an optional liaison in /z/, /t/ or /n/; after an elided word; across a hyphen; after a word that leans forward (DET, ADP, CCONJ, SCONJ, AUX, ne/n', a pronoun before a verb/pronoun/ne, an adverb before an adjective/adverb).
+- Soft rules — cut at a strong boundary (before a preposition, conjunction or ne/n'; noun/adjective → verb, pronoun or adverb) once the group has ≥ 3 estimated syllables; at a weak boundary (before a determiner; a numeral after a verb; verb → adverb) once ≥ 5; never before de/d'/du/des after a noun.
+- Cap — cut at any allowed gap if the next word would take the group past 10 syllables.
+- A last group of a segment under 3 syllables is merged into the previous one if the result stays ≤ 10.
+Syllables are estimated from the spelling (vowel-letter groups, minus a final mute e or a verb's "-ent"). The rule-based parser is not wrapped in the parse cache (D55): it is deterministic, and a cache would keep stale chunks after a rule change.
 **Rationale:**
 - Gemini gives different chunks for the same sentence on different runs (D50); the parse cache (D55) only hides this for repeated sentences.
 - Gemini sometimes cuts a chunk inside a liaison (D51), which makes a correct liaison show as an extra sound.
-- The Gemini call dominates sentence preparation (`analyze_sentence` 2.6-13.4 s median, D52).
+- The Gemini call dominates sentence preparation (`analyze_sentence` 2.6-13.4 s median, D52). With the rule-based parser, Khanh measured about 5 s for the first sentence and about 1 s for the following ones, long sentences included (2026-11-09).
 - An API key makes local setup harder for collaborators and adds a secret to a public deployment.
 **Alternatives considered:** Keep Gemini with temperature 0 and the cache (rejected: still slow on first use, still needs a key, still free to cut inside a liaison). An ML prosodic-phrasing model (rejected for MVP: heavier, nothing ready for French found).
-**Tradeoff accepted:** Heuristic groups follow syntax, not real prosody, so they match D2's "groupe rythmique" only approximately. There is no regression set: the chunker is checked by hand on a few sentences, so a rule that fixes one case may break another. D51 (liaison across chunks) should mostly disappear with the hard rule; confirm by hand once built.
-**Status:** Agreed, not implemented.
+**Tradeoff accepted:**
+- Heuristic groups follow syntax, not real prosody, so they match D2's "groupe rythmique" only approximately.
+- No regression set: the chunker is checked by hand on about 20 sentences, and the thresholds (3/5/10 syllables) and the strong/weak classes were tuned on them, so a rule that fixes one case may break another.
+- The rules are local: each cut is decided from the two words around the gap (their POS) plus the running group length. They cannot see where a phrase starts or ends, so they miss:
+  - a noun phrase ending in an adjective: "de la mobilisation sociale | du cinq novembre" (the "no cut before de/du after a noun" exception only checks the word just before);
+  - multiword prepositions: "rencontrés lors | de la mobilisation" ("lors" tagged ADV, then ADV → ADP counts as a strong boundary);
+  - correlative constructions ("trop … pour", "si … que"): "C'est trop de mépris | pour rester chez soi" is acceptable here only by chance;
+  - coordination: "lycéens et étudiants" stays together only because of the optional liaison "lycéens‿et".
+- One greedy pass with no lookahead: two strong boundaries in a row can leave a one-word group, e.g. "A l'appel d'une intersyndicale | associée | aux mouvements lycéens et étudiants," (the participle is cut off from its complement). The tail merge only fixes the last group of a segment.
+- Every punctuation mark ends a segment, including quotation marks, which are not prosodic breaks. spaCy may tag "«" as PROPN; it then counts as a word, so a liaison across it ("aux « amis »") is never considered.
+- Optional liaisons in /ʁ/, /p/, /v/ ("promener‿au") do NOT block a cut — a narrowing of the "never inside a liaison" rule, because the rule engine allows them broadly and they are rare in speech; a learner who makes one at a cut gets an extra sound.
+- Depends on `fr_core_news_sm` tags; mistags move cuts ("quarante" as PRON in "sept heures | quarante-cinq", "habite" as ADJ, "lors" as ADV, "portraits" as ADJ at the start of a sentence without a determiner).
+- Each chunk is still re-tagged on its own by `analyze_chunk`; on the hand-test set the chunk-level and sentence-level obligatory liaisons agreed. D51 (liaison across chunks) cannot happen any more: `analyze_chunk` never sees two chunks together, and the hard rule keeps liaisons inside one chunk.
+**Status:** Implemented in v4_2 (hand-checked, no regression set). Possible later directions in the MVP handoff ("Rule-based parser — later directions").
 
 ### D68 — Text normalization before parsing; the learner practises the normalized text
 **Decision:** A pure normalization step runs before chunking: apostrophe variants (’ ‘ ʼ ´ `) become `'` (this fixes elision detection, which only recognizes U+0027); numbers are written out with `num2words` (`lang="fr"`); a few hand-written rules cover times ("14 h") and common abbreviations (M., Mme, etc.). The normalized sentence is what the UI shows and what the learner practises.
+
+Implementation (v4_2): `stages/parsing/text_normalization.py::normalize_for_speech`, called in `PaulouPipeline.analyze_sentence`, so it applies to any parser; `Sentence.text` (shown by the UI) is the normalized text. Rules, most specific first: apostrophes, abbreviations (M., MM., Mme, Mmes, Mlle, Mlles, Dr, Pr, n°, etc.), times ("14 h", "14h30"), ordinals ("1er", "1re", "2e", "3ème"), percentages, decimals ("3,5"), grouped thousands ("10 000"), remaining integers. "un" becomes "une" in times and before a short list of feminine nouns (`_FEMININE_NOUNS`). `analyze_chunk` drops tokens with no letter or digit (spaCy splits "quarante-cinq" into "quarante", "-", "cinq" and may tag "-" as a word).
 **Rationale:** The liaison rules, elision lookup and G2P all work on written words; "21 ans" must reach them as "vingt et un ans" for the liaison in "vingt‿et" / "un‿an" to be considered at all. The learner has to see what they are expected to say.
 **Alternatives considered:** `spokenform` (Apache-2.0, covers dates, times, currencies and abbreviations for French) — not chosen for now: alpha status (0.4.5, Sept 2026), one maintainer, extra unrelated dependencies; revisit if the hand-written rules prove too thin. Letting espeak normalize numbers inside G2P (rejected: the liaison engine and unit assembly would never see the words).
-**Tradeoff accepted:** Coverage is partial (dates, currencies, ordinals in context, rare abbreviations); checked by hand on a few inputs only.
-**Status:** Agreed, not implemented. Showing the normalized text instead of the original is a proposal not yet explicitly confirmed.
+**Tradeoff accepted:** Coverage is partial (dates, currencies, ordinals in context, rare abbreviations, units, Roman numerals); the gender of "un" is only fixed for the listed nouns ("21 pommes" is fine, an unlisted feminine noun is not); checked by hand on a few inputs only.
+**Status:** Implemented in v4_2. Showing the normalized text instead of the original is implemented; still to be confirmed by Khanh.
 
 ### D69 — [TENTATIVE] Local TTS: try Kokoro-82M with word timings computed from its predicted durations; rate-limit edge-tts otherwise
 **Decision:** Add `KokoroTTSProvider` (registry key to be chosen, D31 pattern) using Kokoro-82M (Apache-2.0, runs on CPU, one French voice `ff_siwis`). The `kokoro` package (0.7.16) returns word timestamps only for English, but returns per-phoneme predicted durations (`pred_dur`) for every language; word timings are computed from those at the spaces of the phoneme string. Kokoro becomes the default only if a local check confirms the timings line up with the words. Whatever the TTS, the backend gets a rate limit on sentence preparation.

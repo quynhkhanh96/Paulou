@@ -360,12 +360,68 @@ are already covered separately in `test_g2p.py` and `test_unit_assembler.py`.
 | `test_punctuation_is_filtered_out` | Verify PUNCT tokens (e.g. a comma) never produce a bogus unit or appear in any unit's `words`. | No unit contains `","`. |
 | `test_empty_chunk_returns_empty_list` | Verify the empty-input edge case doesn't crash. | `analyze_chunk("", g2p) == []`. |
 | `test_single_word_chunk` | Verify the degenerate one-word-chunk case (no adjacent pairs to evaluate). | 1 `single` unit. |
+| `test_lone_hyphen_token_is_not_a_word` | spaCy splits "quarante-cinq" (from number normalization, D68) and tags the lone "-" as a word; it must not reach G2P. | No unit word lacks a letter or digit. |
+
+---
+
+## `test_text_normalization.py`
+
+Tests `normalize_for_speech` in `stages/parsing/text_normalization.py`
+(D68). Pure function; uses `num2words` (no model, no network).
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_normalize_for_speech` | One case per rule: apostrophe variants, integers (with "et" forms and the feminine "une"), times, ordinals, decimals, percentages, grouped thousands, abbreviations, whitespace. | Exact spoken form, e.g. `"J’ai 21 ans."` -> `"J'ai vingt et un ans."`, `"Il est 14h30."` -> `"Il est quatorze heures trente."`. |
+| `test_text_without_digits_or_abbreviations_is_unchanged` | Ordinary text passes through. | Input == output. |
+| `test_idempotent` | Normalizing twice changes nothing. | `f(f(x)) == f(x)`. |
+| `test_out_of_range_time_is_read_as_numbers` | "25 h" is not a clock time. | `"Vingt-cinq h"`. |
+| `test_no_digit_left` | A sentence mixing every rule. | No digit in the output. |
+
+---
+
+## `test_rule_chunker.py`
+
+Tests `chunk_tokens` and `estimate_syllables` in
+`stages/parsing/rule_chunker.py` (D67) with hand-written POS tags, so the
+rules are tested without spaCy.
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_estimate_syllables` | Spelling-based syllable estimate (mute e, verb "-ent", elided clitic). | e.g. "pommes" 1, "acheté" 3, "l'" 0. |
+| `test_ranges_cover_all_tokens_contiguously` | Output ranges are contiguous and cover every token. | First starts at 0, last ends at len, no gap. |
+| `test_subject_then_verb_phrase_with_short_tail_merged` | Cut between subject and verb; a short last group is merged back. | `["Les enfants", "ont acheté des pommes ."]`. |
+| `test_never_cuts_inside_obligatory_liaison_chain` / `..._optional_liaison` | Hard rule: no cut inside a liaison (D51). | One chunk; no chunk ends with "ont". |
+| `test_rare_optional_liaison_does_not_block_a_cut` | Optional /ʁ/ liaisons ("promener‿au") do not block. | Cut before "au". |
+| `test_never_cuts_after_elided_word` | Hard rule: no chunk ends with an elided clitic. | No chunk ends with "'". |
+| `test_cuts_at_punctuation_...`, `test_no_liaison_across_punctuation`, `test_short_segment_is_kept_alone` | Punctuation ends a chunk and stays with the preceding word. | e.g. `["Je voudrais un café ,", "s' il vous plaît ."]`. |
+| `test_never_cuts_across_a_hyphen_token` | Hyphen tokens glue their neighbours. | No chunk starts/ends with "-" or ends with "quarante". |
+| `test_opening_quote_goes_with_following_word` | « attaches forward. | `["Il a dit ,", "« bonjour »"]`. |
+| `test_noun_complement_stays_in_noun_phrase` | No cut before "de" after a noun. | One chunk. |
+| `test_weak_boundary_needs_a_longer_group` | A determiner after a 3-syllable group does not cut. | `["Je voudrais un café"]`. |
+| `test_long_group_is_cut_at_max_length` | The length cap forces a cut. | More than one chunk. |
+
+---
+
+## `test_rule_based_parser.py` (`tests/model/`)
+
+Tests `RuleBasedSentenceParser` in `stages/parsing/rule_based_parser.py`
+(D67). Requires `fr_core_news_sm`. The pinned chunks are hand-checked
+examples tied to the spaCy model version, not a regression set (D70).
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_chunks_join_back_to_the_sentence` | Chunking contract: no text lost or added, no empty chunk. | `" ".join(chunks) == sentence`. |
+| `test_no_chunk_ends_inside_an_obligatory_liaison_or_an_elision` | D67 hard rule, checked against the sentence-level liaison decisions. | No boundary pair is obligatoire; no chunk ends with "'". |
+| `test_deterministic`, `test_empty_sentence` | Same input, same output; empty input. | Equal; `[]`. |
+| `test_handoff_sentences` | The MVP handoff's hand-test sentences, normalized first. | e.g. `["Les enfants", "ont acheté des pommes."]`, `["J'ai vingt et un ans."]`. |
 
 ---
 
 ## `test_chunking_invariants.py` (`tests/contract/`)
 
-Tests `GeminiSentenceParser` in `stages/parsing/gemini_parser.py`. Calls
+Tests `GeminiSentenceParser` in `stages/parsing/gemini_parser.py` (an
+alternative parser since D67; the default rule-based parser has its own
+tests above). Calls
 the real Gemini API — requires `GEMINI_API_KEY` (repo-root `.env`),
 skipped automatically otherwise. Per Testing Conventions, chunking is
 stochastic (LLM-based), so these check invariants that must always hold —
