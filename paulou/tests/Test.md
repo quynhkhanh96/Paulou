@@ -364,6 +364,33 @@ are already covered separately in `test_g2p.py` and `test_unit_assembler.py`.
 
 ---
 
+## `test_rate_limit.py` (`tests/api/`)
+
+Tests the per-client rate limits (D71): `SlidingWindowLimiter`,
+`client_key` and `retry_after_header` in `backend/api/rate_limit.py`, the
+new `Settings` fields, and the wiring on the limited endpoints (stub
+pipeline, `make_client(warm_up=False, ...)`). The limiter tests use a fake
+clock, so nothing sleeps.
+
+| Test | Purpose | Expected outcome |
+|---|---|---|
+| `test_allows_up_to_the_limit_then_reports_the_wait`, `test_window_slides` | Sliding-window counting and the wait returned. | `None` up to the limit, then the seconds until the oldest counted hit leaves the window. |
+| `test_rejected_hits_are_not_counted` | A refused request does not extend the wait. | Allowed again once the first hit is 60 s old. |
+| `test_clients_are_counted_separately` | Keys are independent. | "b" allowed while "a" is limited. |
+| `test_the_longest_wait_of_all_windows_is_returned` | Minute and hour windows together. | Wait comes from the full hour window. |
+| `test_zero_limit_turns_a_window_off`, `test_limits_off_when_zero` | 0 disables a limit. | Every hit allowed; 25 sentences all 200. |
+| `test_idle_clients_are_swept` | Memory stays bounded. | Only the active key is left after a sweep. |
+| `test_client_key_*` | Peer IP by default; rightmost X-Forwarded-For only when trusted. | e.g. `"6.6.6.6, 1.2.3.4"` -> `"1.2.3.4"`. |
+| `test_retry_after_is_whole_seconds_at_least_one` | Header format. | `0.2` -> `"1"`, `29.01` -> `"30"`. |
+| `test_settings_defaults_and_env` | Defaults 20/200 and 30/300; env overrides. | As set. |
+| `test_sentence_preparation_is_limited_with_a_retry_after` | `POST /sentences` over the limit. | 429, code `rate_limited`, `Retry-After` >= 1. |
+| `test_guide_audio_shares_the_tts_bucket` | Guide audio counts with sentences. | Third TTS request -> 429. |
+| `test_reference_clips_are_not_limited` | `GET /sentences/{id}/audio` is free. | Five clip requests all 200. |
+| `test_attempts_have_their_own_bucket` | `POST /attempts` uses the attempt limits. | 200, 200, 429. |
+| `test_forwarded_for_is_ignored_unless_trusted` | A client cannot dodge the limit with a forged header; behind a trusted proxy each client has its own count. | 429 untrusted; 200 trusted. |
+
+---
+
 ## `test_text_normalization.py`
 
 Tests `normalize_for_speech` in `stages/parsing/text_normalization.py`

@@ -13,7 +13,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Response
 
-from backend.api.dependencies import AppState, api_error, get_state
+from backend.api.dependencies import AppState, api_error, get_state, rate_limit
 from backend.api.mappers import normalize_text
 
 logger = logging.getLogger("paulou.api")
@@ -23,7 +23,7 @@ router = APIRouter()
 _ALLOWED = re.compile(r"[^\W\d_]+(?:[ '’\-][^\W\d_]+)*")
 
 
-@router.get("/guide/audio")
+@router.get("/guide/audio", dependencies=[Depends(rate_limit("tts"))])  # D71
 def get_guide_audio(
     text: str = Query(...),
     speed: Literal["normal", "slow"] = "normal",

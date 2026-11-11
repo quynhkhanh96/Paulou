@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from backend.api.audio_convert import AudioDecodeError, convert_to_wav
-from backend.api.dependencies import AppState, api_error, get_state
+from backend.api.dependencies import AppState, api_error, get_state, rate_limit
 from backend.api.mappers import to_attempt_response
 from backend.api.phone_stats import fill_placeholder_stats
 from backend.api.schemas import AttemptResponse
@@ -14,7 +14,9 @@ logger = logging.getLogger("paulou.api")
 router = APIRouter()
 
 
-@router.post("/attempts", response_model=AttemptResponse)
+@router.post(
+    "/attempts", response_model=AttemptResponse, dependencies=[Depends(rate_limit("attempt"))]  # D71
+)
 def create_attempt(
     sentence_id: str = Form(...),
     chunk_index: int | None = Form(default=None, ge=0),

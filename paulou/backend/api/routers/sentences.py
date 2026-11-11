@@ -12,7 +12,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Response
 
-from backend.api.dependencies import AppState, api_error, get_state
+from backend.api.dependencies import AppState, api_error, get_state, rate_limit
 from backend.api.mappers import normalize_text, sentence_id_for, to_sentence_response
 from backend.api.schemas import SentenceRequest, SentenceResponse
 from backend.api.store import PreparedSentence
@@ -59,7 +59,9 @@ def _prepare(state: AppState, text: str) -> PreparedSentence:
     return PreparedSentence(sentence=sentence, references={"normal": reference})
 
 
-@router.post("/sentences", response_model=SentenceResponse)
+@router.post(
+    "/sentences", response_model=SentenceResponse, dependencies=[Depends(rate_limit("tts"))]  # D71
+)
 def create_sentence(body: SentenceRequest, state: AppState = Depends(get_state)) -> SentenceResponse:
     text = normalize_text(body.text)
     if not text:

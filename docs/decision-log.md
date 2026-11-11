@@ -440,12 +440,6 @@ replacing the two-branch GOP/free-decode architecture
 **Rationale:** Two places need identical keyboard and ARIA behaviour; duplicating it risks drift. This is a UI helper, not a new backend abstraction layer, so it does not touch the module boundary rules.
 **Status:** Locked in.
 
-### D62 — Guide examples are read by the reference TTS on demand; the sounds themselves have no audio
-**Decision:** Each example word in the pronunciation guide has a play button. It calls `GET /api/guide/audio?text=…`, which the backend answers with `PaulouPipeline.synthesize_text` (new thin method: `tts.synthesize(text, rate)[0]`), so the audio goes through the same TTS provider and disk cache as sentence audio (D7). The text is restricted to letters, spaces, apostrophes and hyphens, at most 40 characters. The isolated sounds (/i/, /y/, ...) get no button.
-**Rationale:** Reading a word needs no new stage and no static audio files in the repo. TTS cannot pronounce a bare IPA symbol: the alternatives (a hand-picked carrier syllable, playing the three examples in a row, Azure SSML `<phoneme>` with an Azure key) were offered and the user chose examples only. The restriction keeps the endpoint from being an open text-to-speech proxy, since the backend port is published by Docker Compose (D53).
-**Tradeoff accepted:** Needs the same network access as sentence preparation (edge-tts, D31); offline, the buttons show "audio unavailable". Not verified with the real voice: the sandbox that built it cannot reach edge-tts, so the buttons were tested only with a stub pipeline, and how each isolated word sounds is unchecked. Examples are read as single words, so a word like "y" or "eau" may be read oddly by the TTS.
-**Status:** Locked in for MVP; revisit with isolated-sound audio if Azure becomes a provider in use.
-
 ### D63 — Learner result view replaces the phoneme strip: summary boxes plus per-word drill-down
 **Decision:** After an attempt, the web UI shows, top to bottom:
 - a counts-only score line, "x/y words correct · a/b sounds correct · n close";
@@ -524,7 +518,7 @@ Implementation (v4_2): `stages/parsing/text_normalization.py::normalize_for_spee
 **Rationale:** The liaison rules, elision lookup and G2P all work on written words; "21 ans" must reach them as "vingt et un ans" for the liaison in "vingt‿et" / "un‿an" to be considered at all. The learner has to see what they are expected to say.
 **Alternatives considered:** `spokenform` (Apache-2.0, covers dates, times, currencies and abbreviations for French) — not chosen for now: alpha status (0.4.5, Sept 2026), one maintainer, extra unrelated dependencies; revisit if the hand-written rules prove too thin. Letting espeak normalize numbers inside G2P (rejected: the liaison engine and unit assembly would never see the words).
 **Tradeoff accepted:** Coverage is partial (dates, currencies, ordinals in context, rare abbreviations, units, Roman numerals); the gender of "un" is only fixed for the listed nouns ("21 pommes" is fine, an unlisted feminine noun is not); checked by hand on a few inputs only.
-**Status:** Implemented in v4_2. Showing the normalized text instead of the original is implemented; still to be confirmed by Khanh.
+**Status:** Implemented in v4_2; showing the normalized text confirmed by Khanh (2026-11-09). Checked with the real G2P and edge-tts on "J’ai 21 ans." and "Il est 14 h.".
 
 ### D69 — [TENTATIVE] Local TTS: try Kokoro-82M with word timings computed from its predicted durations; rate-limit edge-tts otherwise
 **Decision:** Add `KokoroTTSProvider` (registry key to be chosen, D31 pattern) using Kokoro-82M (Apache-2.0, runs on CPU, one French voice `ff_siwis`). The `kokoro` package (0.7.16) returns word timestamps only for English, but returns per-phoneme predicted durations (`pred_dur`) for every language; word timings are computed from those at the spaces of the phoneme string. Kokoro becomes the default only if a local check confirms the timings line up with the words. Whatever the TTS, the backend gets a rate limit on sentence preparation.
@@ -539,6 +533,30 @@ Implementation (v4_2): `stages/parsing/text_normalization.py::normalize_for_spee
 **Alternatives considered:** Build a golden regression set (sentences with expected chunks, units, liaisons and phonemes) before any rule change (deferred to post-MVP, see Roadmap). Keep calibration MVP-blocking (rejected: no visible effect).
 **Tradeoff accepted:** Rule changes made without a regression set may fix one case and break another unnoticed. The backend keeps filling placeholder statistics internally (D50) so that `calibrate_score` does not fail; removing them, and the always-null `score` fields of the API, goes with the calibration work post-MVP. Free Docker hosting is limited (e.g. Hugging Face Spaces now requires a paid plan to create a Docker Space; free CPU hardware sleeps after about 48 h idle).
 **Status:** Locked in for MVP. Supersedes the Roadmap's "Native-corpus calibration" MVP-blocking item and build-order step 7.
+
+### D71 — Per-client rate limits on the TTS-backed endpoints and on scoring
+**Decision:** The backend limits requests per client IP with an in-memory sliding window (`backend/api/rate_limit.py::SlidingWindowLimiter`, applied as a FastAPI dependency `rate_limit(bucket)` in `backend/api/dependencies.py`). Two buckets, each with a per-minute and a per-hour limit:
+- "tts": `POST /api/sentences` and `GET /api/guide/audio` (D62) — every request that can make the server call the TTS service — 20 per minute, 200 per hour;
+- "attempt": `POST /api/attempts` — 30 per minute, 300 per hour.
+Every request to a limited endpoint counts, including one answered from a cache or rejected as invalid. Reference clips (`GET /api/sentences/{id}/audio`) are not limited. Over a limit the backend answers 429 with code `rate_limited` and a `Retry-After` header; the body does not say which limit was hit. Limits come from `Settings` (`PAULOU_TTS_LIMIT_PER_MINUTE`, `PAULOU_TTS_LIMIT_PER_HOUR`, `PAULOU_ATTEMPT_LIMIT_PER_MINUTE`, `PAULOU_ATTEMPT_LIMIT_PER_HOUR`; 0 turns a limit off). The client key is the peer IP; with `PAULOU_TRUST_FORWARDED_FOR=1` it is the rightmost X-Forwarded-For address (the one appended by our own proxy), and the frontend nginx now sets that header. The frontend shows one friendly message for any 429, whichever endpoint (`SERVER_BUSY_MESSAGE` in `frontend/src/api.ts`): "Paulou is a little busy right now. Take a short breather and try again in a moment."
+**Rationale:**
+- The server calls edge-tts, an unofficial protocol (D31, D49), from one IP for every user: one client sending hundreds of sentences could get that IP blocked, and every user would lose TTS. The guide audio endpoint reaches the same service, so it shares the same count.
+- Scoring is the most CPU per request (wav2vec2 decode). Decodes already run one at a time (`decode_lock`, D52); the per-client limit stops one client from filling that queue.
+- The MVP's first release target is a public link (D70), so the endpoints will be reachable by anyone.
+- Limits sized from practice pace: a sentence attempt takes at least about 6-10 s (record, wait, read), word or chunk drilling up to about 15 per minute; 30 per minute leaves twice that, and 300 per hour is a very dense hour. 20 sentences per minute is far above what a learner types.
+- One message for every 429, with no number in it: the learner does not need to know which limit exists, and "the server is busy" is true from their side.
+**Alternatives considered:**
+- `slowapi` or another library (not chosen: one more dependency for about 60 lines of code; the limiter is easy to test with a fake clock).
+- Not counting requests answered from a cache (rejected for now: needs the limit check after the cache lookup, inside each endpoint; counting everything is simpler and still far above normal use).
+- Limiting reference clips too (rejected: they belong to an already-counted sentence; each prepared sentence makes at most one extra TTS call, for the slow speed).
+- A global cap on concurrent scoring across all clients (deferred: decodes are already serialized by `decode_lock`; whether a queue limit or a timeout is needed depends on the latency re-measure on 2 vCPU, Roadmap "MVP — next work" item 4).
+- Leftmost X-Forwarded-For (rejected: written by the client, can be forged).
+**Tradeoff accepted:**
+- In memory, one process: counts reset on restart, and several workers would each keep their own counts (fine for the single-process MVP deployment, D53).
+- Per IP: users behind one NAT (a school, a company) share a count; a client with many IPs is not stopped. Without `PAULOU_TRUST_FORWARDED_FOR`, every user behind the frontend nginx shares ONE count, which is fine for local `docker compose` (one user) but wrong for a public deployment. The public deployment must set it and must not expose the backend port directly (`docker-compose.yml` still publishes 8000 for local use). If another proxy sits in front of nginx (e.g. the host's HTTPS proxy), the rightmost address is that proxy's: the setting then needs revisiting with the chosen host.
+- Thresholds are a first guess, not measured on real use; adjust after the first public release.
+- Guide audio is played through an `<audio>` element, so a 429 there only shows the existing "Audio unavailable" state, not the busy message.
+**Status:** Implemented in v4_3. Implements the rate-limit part of D69 (which also covers sentence preparation with any TTS).
 
 ---
 

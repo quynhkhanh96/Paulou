@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.dependencies import AppState
+from backend.api.dependencies import AppState, build_rate_limiters
 from backend.api.routers import attempts, guide, health, sentences
 from backend.api.settings import Settings
 from backend.api.store import SentenceStore
@@ -39,6 +39,7 @@ def create_app(
         settings=settings,
         store=SentenceStore(settings.store_capacity),
         calibrated=calibrated,
+        rate_limiters=build_rate_limiters(settings),  # D71
     )
 
     @asynccontextmanager

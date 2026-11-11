@@ -11,6 +11,14 @@ Environment variables (all optional):
 - PAULOU_PHONE_STATS_PATH calibration table JSON; unset = placeholder stats (D50/D53)
 - PAULOU_TIMING_OFFSET_MS edge-tts word-timing shift (default 50, D49)
 - PAULOU_CORS_ORIGINS     comma-separated allowed origins (default: Vite dev server)
+- PAULOU_TTS_LIMIT_PER_MINUTE / PAULOU_TTS_LIMIT_PER_HOUR
+                          per-client limits on sentence preparation and guide
+                          audio (default 20 / 200; 0 = off) (D71)
+- PAULOU_ATTEMPT_LIMIT_PER_MINUTE / PAULOU_ATTEMPT_LIMIT_PER_HOUR
+                          per-client limits on scoring (default 30 / 300; 0 = off) (D71)
+- PAULOU_TRUST_FORWARDED_FOR  "1" to key rate limits on the rightmost
+                          X-Forwarded-For address; only behind one trusted
+                          reverse proxy (default off) (D71)
 """
 
 import os
@@ -32,6 +40,12 @@ class Settings:
     max_audio_ms: int = 45_000
     store_capacity: int = 32
     cors_origins: tuple[str, ...] = ("http://localhost:5173",)
+    # D71: per-client rate limits (0 = off).
+    tts_limit_per_minute: int = 20
+    tts_limit_per_hour: int = 200
+    attempt_limit_per_minute: int = 30
+    attempt_limit_per_hour: int = 300
+    trust_forwarded_for: bool = False
 
     @property
     def tts_cache_dir(self) -> Path:
@@ -57,4 +71,16 @@ class Settings:
                 if origins
                 else defaults.cors_origins
             ),
+            tts_limit_per_minute=int(
+                env.get("PAULOU_TTS_LIMIT_PER_MINUTE", defaults.tts_limit_per_minute)
+            ),
+            tts_limit_per_hour=int(env.get("PAULOU_TTS_LIMIT_PER_HOUR", defaults.tts_limit_per_hour)),
+            attempt_limit_per_minute=int(
+                env.get("PAULOU_ATTEMPT_LIMIT_PER_MINUTE", defaults.attempt_limit_per_minute)
+            ),
+            attempt_limit_per_hour=int(
+                env.get("PAULOU_ATTEMPT_LIMIT_PER_HOUR", defaults.attempt_limit_per_hour)
+            ),
+            trust_forwarded_for=env.get("PAULOU_TRUST_FORWARDED_FOR", "").strip().lower()
+            in ("1", "true", "yes"),
         )

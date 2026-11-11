@@ -10,8 +10,14 @@ export class ApiError extends Error {
   }
 }
 
+// D71: one friendly message for every rate-limited request, whichever limit
+// was hit (sentence preparation, guide audio or scoring).
+export const SERVER_BUSY_MESSAGE =
+  "Paulou is a little busy right now. Take a short breather and try again in a moment.";
+
 async function parse<T>(response: Response): Promise<T> {
   if (response.ok) return (await response.json()) as T;
+  if (response.status === 429) throw new ApiError(429, "rate_limited", SERVER_BUSY_MESSAGE);
   let code = "unknown";
   let message = "Something went wrong. Try again.";
   try {

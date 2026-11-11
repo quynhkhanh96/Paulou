@@ -1,4 +1,4 @@
-import { ApiError, audioUrl, createAttempt, createSentence } from "./api";
+import { ApiError, SERVER_BUSY_MESSAGE, audioUrl, createAttempt, createSentence } from "./api";
 import { SENTENCE } from "./fixtures";
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
@@ -39,6 +39,17 @@ describe("createSentence", () => {
     expect(error.code).toBe("network");
   });
 
+  it("shows the same friendly busy message for any rate-limited request (D71)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      json(429, { detail: { code: "rate_limited", message: "The server is busy right now." } }),
+    );
+    await expect(createSentence("x")).rejects.toMatchObject({
+      status: 429,
+      code: "rate_limited",
+      message: SERVER_BUSY_MESSAGE,
+    });
+  });
+
   it("falls back to a generic message for a non-JSON error", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("<html>502</html>", { status: 502 }));
     await expect(createSentence("x")).rejects.toMatchObject({ status: 502, code: "unknown" });
@@ -64,5 +75,17 @@ describe("createAttempt", () => {
     const form = (fetchMock.mock.calls[0][1] as RequestInit).body as FormData;
     expect(form.get("unit_id")).toBe("c0_unit_0");
     expect(form.has("chunk_index")).toBe(false);
+  });
+});
+
+describe("createAttempt rate limit", () => {
+  it("uses the same busy message as sentence preparation", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 429 }));
+    const blob = new Blob(["abc"], { type: "audio/webm" });
+    await expect(createAttempt("s1", { kind: "sentence" }, blob)).rejects.toMatchObject({
+      status: 429,
+      code: "rate_limited",
+      message: SERVER_BUSY_MESSAGE,
+    });
   });
 });
